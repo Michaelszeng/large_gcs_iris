@@ -1,0 +1,29 @@
+defaults:
+  - algorithm: gcs_star_eps_suboptimal
+  - cost_estimator: shortcut_edge
+  - domination_checker: reaches_cheaper_sampling
+  - hydra: hydra
+
+graph_name: "cg_simple_1"
+should_incl_simul_mode_switches: false
+should_add_const_edge_cost: true
+should_use_l1_norm_vertex_cost: true
+
+cost_estimator:
+  shortcut_edge_cost_factory: "large_gcs.graph.contact_cost_constraint_factory.contact_shortcut_edge_l1norm_cost_factory_obj_weighted"
+
+save_visualization: true
+save_solution: true
+save_metrics: true
+save_to_wandb: true
+
+hydra:
+  job_logging:
+    loggers:
+      large_gcs:
+        level: INFO
+      large_gcs.algorithms:
+        level: DEBUG
+      large_gcs.cost_estimators:
+        level: INFO
+  mode: RUN
