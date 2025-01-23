@@ -1,5 +1,7 @@
 import logging
 import os
+import numpy as np
+import matplotlib.pyplot as plt
 from pathlib import Path
 
 import hydra
@@ -11,10 +13,9 @@ from omegaconf import OmegaConf, open_dict
 from large_gcs.algorithms.search_algorithm import AlgVisParams, SearchAlgorithm
 from large_gcs.cost_estimators.cost_estimator import CostEstimator
 from large_gcs.domination_checkers.domination_checker import DominationChecker
-from large_gcs.graph.contact_graph import ContactGraph
+from large_gcs.graph.voxel_graph import VoxelGraph
 from large_gcs.graph.graph import ShortestPathSolution
 from large_gcs.graph.incremental_contact_graph import IncrementalContactGraph
-from large_gcs.graph.lower_bound_graph import LowerBoundGraph
 from large_gcs.graph_generators.contact_graph_generator import (
     ContactGraphGeneratorParams,
 )
@@ -37,6 +38,27 @@ def main(cfg: OmegaConf) -> None:
         OmegaConf.save(cfg, f)
 
     logger.info(cfg)
+    
+    g = VoxelGraph(
+        [],  # obstacles
+        np.array([0, 0]),  # source
+        np.array([2.5, 2.5]),  # target
+        np.array([[-3,  3],    # workspace
+                  [-3,  3]]),
+            default_voxel_size = 1,
+        should_add_gcs = True,
+        should_add_const_edge_cost = True,
+    )
+    
+    g.generate_successors("source")
+    g.generate_successors("0_0_")
+    print(g.vertices.keys())
+    g.plot()
+    plt.show()
+    
+    return
+    
+    
 
     graph_file = ContactGraphGeneratorParams.inc_graph_file_path_from_name(
         cfg.graph_name

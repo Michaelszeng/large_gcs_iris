@@ -1,3 +1,7 @@
+"""
+Note: these are remnants from Tommy's GGCS experiments -- take what's useful/disregard
+"""
+
 import logging
 import os
 import pickle

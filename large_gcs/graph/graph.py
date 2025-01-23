@@ -265,6 +265,10 @@ class Graph:
         """Add vertices to the graph.
 
         Each vertex is a convex set.
+        
+        costs is a list of list of costs.
+        constraints is a list of list of constraints.
+        names is a list of names for the vertices.
         """
         if names is None:
             names = [None] * len(sets)

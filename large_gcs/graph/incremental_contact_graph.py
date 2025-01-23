@@ -120,6 +120,8 @@ class IncrementalContactGraph(ContactGraph):
         set_ids += ["source", "target"]
 
         # Add convex sets to graph (Need to do this before generating edges)
+        print(self._create_vertex_costs(sets))
+        print(self._create_vertex_constraints(sets))
         self.add_vertices_from_sets(
             sets,
             costs=self._create_vertex_costs(sets),
@@ -522,4 +524,5 @@ class IncrementalContactGraph(ContactGraph):
             workspace=data["workspace"],
             **kwargs,
         )
+        print(data)
         return cg
