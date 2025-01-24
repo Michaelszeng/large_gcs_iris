@@ -77,7 +77,7 @@ class VoxelGraph(Graph):
         sets = []
         set_ids = []
 
-        sets += [Point(s), Point(t)]       
+        sets += [Point(s), Point(t)]      
         set_ids += ["source", "target"]
 
         # Add convex sets to graph (Need to do this before generating edges)
@@ -88,25 +88,25 @@ class VoxelGraph(Graph):
             names=set_ids,
         )  # This function is defined in graph.py
         
-        self.add_vertex
-        
         self.set_source("source")
-        self.set_target("target")
+        self.set_target("target") 
         
     def generate_successors(self, vertex_name: str) -> None:
         """Generates neighbors and adds them to the graph, also adds edges from
         vertex to neighbors."""
+        print("generating successors")
+        
         neighbors = []
         
-        if vertex_name == "source":
+        if vertex_name == self.source_name:
             # Find the voxel that the source is in
             # It's fine if s is on the boundary between multiple voxels; we only
             # add one of the voxels it is in but those boundary voxels will be
             # added as successors of the first voxel
-            s_center = self.vertices["source"].convex_set.center           
+            s_center = self.vertices[self.source_name].convex_set.center           
             neighbor_voxel_center = self.default_voxel_size * (np.round(s_center / self.default_voxel_size))
-            neighbors.append(("source", "0_"*self.base_dim, False, Voxel(neighbor_voxel_center, self.default_voxel_size, self.num_knot_points)))  # neighbor is named "0_0_..."
-        elif vertex_name == "target":
+            neighbors.append((self.source_name, "0_"*self.base_dim, False, Voxel(neighbor_voxel_center, self.default_voxel_size, self.num_knot_points)))  # neighbor is named "0_0_..."
+        elif vertex_name == self.target_name:
             raise ValueError("Should not need to generate neighbors for target vertex")
         else:
             voxel_center = self.vertices[vertex_name].convex_set.center
@@ -148,16 +148,29 @@ class VoxelGraph(Graph):
         for neighbor_data in neighbors:
             self._generate_neighbor(*neighbor_data)
             
-            # Draw edges to the target vertex if it is in the neighbor voxel
             neighbor_voxel_name = neighbor_data[1]
+            
+            # Draw edges from source vertex if it is in the neighbor voxel
+            if neighbor_data[0] == self.source_name:
+                self.add_undirected_edge(
+                    Edge(
+                        u=self.source_name,
+                        v=neighbor_voxel_name,
+                        costs=self._create_single_edge_costs(self.source_name, neighbor_voxel_name),
+                        constraints=self._create_single_edge_constraints(self.source_name, neighbor_voxel_name),
+                    ),
+                    should_add_to_gcs=self._should_add_gcs,
+                )
+            
+            # Draw edges to the target vertex if it is in the neighbor voxel
             if self._does_vertex_have_possible_edge_to_target(neighbor_voxel_name):
                 # Directed edge to target
                 self.add_edge(
                     Edge(
                         u=neighbor_voxel_name,
-                        v="target",
-                        costs=self._create_single_edge_costs(neighbor_voxel_name, "target"),
-                        constraints=self._create_single_edge_constraints(neighbor_voxel_name, "target"),
+                        v=self.target_name,
+                        costs=self._create_single_edge_costs(neighbor_voxel_name, self.target_name),
+                        constraints=self._create_single_edge_constraints(neighbor_voxel_name, self.target_name),
                     ),
                     should_add_to_gcs=self._should_add_gcs,
                 )
@@ -166,12 +179,12 @@ class VoxelGraph(Graph):
         self, u: str, v: str, is_v_in_vertices: bool, v_set: Voxel = None
     ) -> None:
         """
-        Generates a neighbor (v) and adds it to the graph.
+        Generates a neighbor of u (called v) and adds it to the graph.
         
-        Also adds an edge from u to v and v to u (all edges are undirected).
-        and adds edges between the generated neighbor and all intersecting 
-        voxels.
+        Also adds edges between the v and all intersecting voxels with v.
         """
+        print(f"generating neighbor {v}")
+        
         if not is_v_in_vertices:
             vertex = Vertex(
                 v_set,
@@ -179,15 +192,6 @@ class VoxelGraph(Graph):
                 constraints=self._create_single_vertex_constraints(v_set),
             )
             self.add_vertex(vertex, v, should_add_to_gcs=self._should_add_gcs)
-        # self.add_undirected_edge(
-        #     Edge(
-        #         u=u,
-        #         v=v,
-        #         costs=self._create_single_edge_costs(u, v),
-        #         constraints=self._create_single_edge_constraints(u, v),
-        #     ),
-        #     should_add_to_gcs=self._should_add_gcs,
-        # )
         
         # Add edges between the generated neighbor (v) and all adjacent voxels
         # Generate all possible neighbor offsets (-1, 0, 1) for each dimension
@@ -387,3 +391,4 @@ class VoxelGraph(Graph):
         should_use_l1_norm_vertex_cost: bool = False,
     ):
         pass
+    

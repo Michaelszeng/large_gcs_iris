@@ -1,0 +1,3 @@
+_target_: large_gcs.cost_estimators.shortcut_edge_cfree_ce.ShortcutEdgeCfreeCE
+
+shortcut_edge_cost_factory: "large_gcs.graph.cfree_cost_constraint_factory.shortcut_edge_l2norm_cost_factory"

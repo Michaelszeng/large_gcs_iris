@@ -1,6 +1,7 @@
 import numpy as np
-import scipy
+from typing import List
 from pydrake.all import (
+    Cost,
     L2NormCost, 
     LinearCost,
     LinearConstraint,
@@ -117,3 +118,54 @@ def vertex_constraint_last_pos_equality_cfree(
     A = np.hstack((np.zeros((base_dim, base_dim)), np.eye(base_dim)))
     b = sample[base_dim:]
     return LinearEqualityConstraint(A, b)
+
+
+def shortcut_edge_l2norm_cost_factory(
+    u: str,
+    base_dim: int,
+    num_knot_points: int,
+    add_const_cost: bool = True,
+    heuristic_inflation_factor: float = 1,
+) -> List[Cost]:
+    """
+    Cost function defining the heuristic. Specifically, the heuristic is the 
+    L2 distance from the last knot point of the successor set u to the target, 
+    potentially inflated by a scaling factor.
+    
+    Linear cost of the form: a'x + b, where a is a vector of coefficients and b is a constant.
+    
+    
+    A = [0,...,0, I, -I]
+                  ^   ^
+                  |   |
+            u's last  target
+    b = 0
+    x = [u_x0, ..., u_x{n-1}, target_x]
+    """
+    # L2 distance cost
+    if u == "source":
+        u_part = np.eye(base_dim)  # source is a point and so has only base_dim variables
+    else:
+        u_part = np.zeros((base_dim, num_knot_points * base_dim))
+        u_part[:, -base_dim:] = np.eye(base_dim)  # select last knot point
+    
+    target_part = -np.eye(base_dim)  # target is a point and so has only base_dim variables
+
+    A = np.hstack((u_part, target_part))
+    b = np.zeros((base_dim, 1))
+    
+    costs = [L2NormCost(A, b)]
+    
+    # Constant cost for edge activation
+    if add_const_cost:
+        if u == "source":
+            total_dim = base_dim + base_dim  # source and target only have one knot point
+        else:
+            total_dim = num_knot_points * base_dim + base_dim
+        # Constant cost for the edge
+        a = np.zeros((total_dim, 1))
+        # We add 2 because if a shortcut is used it minimally replaces 2 edges
+        constant_cost = 2 * heuristic_inflation_factor
+        costs.append(LinearCost(a, constant_cost))
+    
+    return costs

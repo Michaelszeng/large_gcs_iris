@@ -133,6 +133,7 @@ class GcsStar(SearchAlgorithm):
     @profile_method
     def _run_iteration(self) -> Optional[ShortestPathSolution]:
         """Runs one iteration of the search algorithm."""
+        print("iterating")
 
         n: SearchNode = self.pop_node_from_Q()
 

@@ -26,6 +26,15 @@ logger = logging.getLogger(__name__)
 
 
 def profile_method(method):
+    """A decorator that profiles the execution time of class methods and
+    autonmatically saves to the AlgMetrics.
+    
+    Usage:
+        class MyClass:
+            @profile_method
+            def my_method(self):
+                # method implementation
+    """
     @wraps(method)
     def wrapper(self, *args, **kwargs):
         start_time = time.time()
@@ -289,7 +298,8 @@ class AlgMetrics:
 
 @dataclass
 class SearchNode:
-    """A node in the search tree."""
+    """A node in the search tree; i.e. a path from the source to the current 
+    vertex."""
 
     priority: float
     vertex_name: str

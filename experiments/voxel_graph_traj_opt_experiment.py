@@ -51,10 +51,29 @@ def main(cfg: OmegaConf) -> None:
         should_add_const_edge_cost = True,
     )
     
-    g.generate_successors("source")
-    g.generate_successors("0_0_")
-    g.generate_successors("-1_-1_")
-    print(g.vertices.keys())
+    # g.generate_successors("source")
+    # g.generate_successors("0_0_")
+    # g.generate_successors("-1_-1_")
+    # print(g.vertices.keys())
+    # g.plot()
+    # plt.show()
+    
+    cost_estimator: CostEstimator = instantiate(
+        cfg.cost_estimator, graph=g, add_const_cost=cfg.should_add_const_edge_cost
+    )
+    domination_checker: DominationChecker = instantiate(
+        cfg.domination_checker, graph=g
+    )
+    alg: SearchAlgorithm = instantiate(
+        cfg.algorithm,
+        graph=g,
+        cost_estimator=cost_estimator,
+        domination_checker=domination_checker,
+        vis_params=AlgVisParams(log_dir=full_log_dir),
+    )
+
+    sol: ShortestPathSolution = alg.run()
+
     g.plot()
     plt.show()
     

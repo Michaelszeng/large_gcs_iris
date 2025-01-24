@@ -10,7 +10,7 @@ from large_gcs.utils.hydra_utils import get_function_from_string
 logger = logging.getLogger(__name__)
 
 
-class ShortcutEdgeCE(CostEstimator):
+class ShortcutEdgeCfreeCE(CostEstimator):
     def __init__(
         self,
         graph: Graph,
@@ -42,51 +42,49 @@ class ShortcutEdgeCE(CostEstimator):
         successor: str,
         node: SearchNode,
         heuristic_inflation_factor: float,
-        solve_convex_restriction: bool = False,
+        solve_convex_restriction: bool = True,
         use_convex_relaxation: bool = False,
         override_skip_post_solve: Optional[bool] = None,
     ) -> ShortestPathSolution:
+        """
+        Computes \tilde{f}(\mathbf{v}).
+        
+        To estimate this cost, we add a shortcut edge from the successor to the 
+        target with cost equal to the heuristic given in 
+        _shortcut_edge_cost_factory (and no constraints).
+        
+        Then, we solve the convex restriction for the optimal path from source 
+        to target using this modified graph with the shortcut edge.
+        """       
 
         # Check if this neighbor is the target to see if shortcut edge is required
         add_shortcut_edge = successor != self._graph.target_name
         edge_to_successor = Edge.key_from_uv(node.vertex_name, successor)
         if add_shortcut_edge:
             # Add an edge from the neighbor to the target
-            direct_edge_costs = None
+            shortcut_edge_costs = None
             if self._shortcut_edge_cost_factory:
-                if isinstance(
-                    graph.vertices[successor].convex_set, ContactSet
-                ) or isinstance(graph.vertices[successor], ContactPointSet):
-                    # Only ContactSet and ContactPointSet have the vars attribute
-                    # convex_sets in general do not.
-                    direct_edge_costs = self._shortcut_edge_cost_factory(
-                        u_vars=self._graph.vertices[successor].convex_set.vars,
-                        v_vars=self._graph.vertices[
-                            self._graph.target_name
-                        ].convex_set.vars,
-                        heuristic_inflation_factor=heuristic_inflation_factor,
-                        add_const_cost=self._add_const_cost,
-                    )
-
-                else:
-                    direct_edge_costs = self._shortcut_edge_cost_factory(
-                        self._graph.vertices[successor].convex_set.dim,
-                        heuristic_inflation_factor=heuristic_inflation_factor,
-                        add_const_cost=self._add_const_cost,
-                    )
+                
+                shortcut_edge_costs = self._shortcut_edge_cost_factory(
+                    u=successor,
+                    base_dim=self._graph.base_dim,
+                    num_knot_points=self._graph.num_knot_points,
+                    heuristic_inflation_factor=heuristic_inflation_factor,
+                    add_const_cost=self._add_const_cost,
+                )               
 
             edge_to_target = Edge(
                 u=successor,
                 v=self._graph.target_name,
                 key_suffix="shortcut",
-                costs=direct_edge_costs,
+                costs=shortcut_edge_costs,
             )
             graph.add_edge(edge_to_target)
-            conv_res_active_edges = node.edge_path + [
+            conv_res_active_edges = node.   edge_path + [
                 edge_to_successor,
                 edge_to_target.key,
             ]
-        else:  # neighbor is the target; no shortcut edge needed
+        else:  # successor is the target; no shortcut edge needed
             conv_res_active_edges = node.edge_path + [edge_to_successor]
 
         if solve_convex_restriction:
@@ -104,7 +102,7 @@ class ShortcutEdgeCE(CostEstimator):
 
         self._alg_metrics.update_after_gcs_solve(sol.time)
 
-        # Clean up
+        # Remove the extra added shortcut edge
         if add_shortcut_edge:
             logger.debug(f"Removing edge {edge_to_target.key}")
             graph.remove_edge(edge_to_target.key)
