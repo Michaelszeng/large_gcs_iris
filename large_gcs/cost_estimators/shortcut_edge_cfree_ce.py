@@ -42,8 +42,6 @@ class ShortcutEdgeCfreeCE(CostEstimator):
         successor: str,
         node: SearchNode,
         heuristic_inflation_factor: float,
-        solve_convex_restriction: bool = True,
-        use_convex_relaxation: bool = False,
         override_skip_post_solve: Optional[bool] = None,
     ) -> ShortestPathSolution:
         """
@@ -65,6 +63,7 @@ class ShortcutEdgeCfreeCE(CostEstimator):
             shortcut_edge_costs = None
             if self._shortcut_edge_cost_factory:
                 
+                # Compute shortcut edge costs
                 shortcut_edge_costs = self._shortcut_edge_cost_factory(
                     u=successor,
                     base_dim=self._graph.base_dim,
@@ -73,6 +72,7 @@ class ShortcutEdgeCfreeCE(CostEstimator):
                     add_const_cost=self._add_const_cost,
                 )               
 
+            # Add shortcut edge to graph
             edge_to_target = Edge(
                 u=successor,
                 v=self._graph.target_name,
@@ -87,18 +87,15 @@ class ShortcutEdgeCfreeCE(CostEstimator):
         else:  # successor is the target; no shortcut edge needed
             conv_res_active_edges = node.edge_path + [edge_to_successor]
 
-        if solve_convex_restriction:
-            skip_post_solve = (
-                add_shortcut_edge
-                if override_skip_post_solve is None
-                else override_skip_post_solve
-            )
-            # If used shortcut edge, do not parse the full result since we won't use the solution.
-            sol = graph.solve_convex_restriction(
-                conv_res_active_edges, skip_post_solve=skip_post_solve
-            )
-        else:
-            sol = graph.solve_shortest_path(use_convex_relaxation=use_convex_relaxation)
+        skip_post_solve = (
+            add_shortcut_edge
+            if override_skip_post_solve is None
+            else override_skip_post_solve
+        )
+        # If used shortcut edge, do not parse the full result since we won't use the solution.
+        sol = graph.solve_convex_restriction(
+            conv_res_active_edges, skip_post_solve=skip_post_solve
+        )
 
         self._alg_metrics.update_after_gcs_solve(sol.time)
 

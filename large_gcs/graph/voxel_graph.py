@@ -38,16 +38,6 @@ from large_gcs.visualize.visualize_trajectory import (
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class VoxelShortestPathSolution:
-    vertex_path: List[str]
-    # shape: (n_pos, n_bodies, n_base_dim)
-    pos_trajs: np.ndarray
-    # Maps the n_pos index to the index in vertex_path
-    pos_transition_map: Dict[int, int] = None
-
-
 class VoxelGraph(Graph):
     def __init__(
         self,
@@ -368,11 +358,51 @@ class VoxelGraph(Graph):
 
     def plot_solution(
         self,
-        sol: VoxelShortestPathSolution,
+        sol: ShortestPathSolution,
         loc: Optional[Path] = None,
-        use_paper_params: bool = False,
     ):
-        pass
+        """Plot the voxel graph with the solution path overlaid.
+        
+        Args:
+            sol: Solution containing trajectory points
+            loc: Optional path to save the plot
+        """
+        if self.base_dim != 2:
+            raise ValueError("Can only plot 2D voxel graphs")
+        
+        self.plot()
+        
+        # Extract trajectory points, handling both 2D and 4D points
+        points = []
+        for point in sol.trajectory:
+            if len(point) == 2:
+                # Source/target points
+                points.append(point)
+            else:
+                # Points with two knot points
+                points.append(point[:2])  # 1st knot point
+                points.append(point[2:])  # 2nd knot point
+        
+        trajectory = np.vstack(points)
+        
+        plt.plot(
+            trajectory[:, 0],  # x coordinates
+            trajectory[:, 1],  # y coordinates
+            'bo-',  # blue dots with connecting lines
+            linewidth=2,
+            markersize=5,
+            label='Path',
+            zorder=10  # ensure path is drawn on top
+        )
+        
+        plt.legend()
+        
+        # Save if location provided
+        if loc is not None:
+            plt.savefig(loc)
+            plt.close()
+        else:
+            plt.show()
 
     def plot_current_solution(self, loc: Optional[Path] = None):
         pass

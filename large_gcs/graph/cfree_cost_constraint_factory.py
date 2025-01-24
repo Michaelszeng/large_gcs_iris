@@ -124,7 +124,7 @@ def shortcut_edge_l2norm_cost_factory(
     u: str,
     base_dim: int,
     num_knot_points: int,
-    add_const_cost: bool = True,
+    add_const_cost: bool = False,
     heuristic_inflation_factor: float = 1,
 ) -> List[Cost]:
     """

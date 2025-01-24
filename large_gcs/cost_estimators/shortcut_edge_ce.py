@@ -42,7 +42,7 @@ class ShortcutEdgeCE(CostEstimator):
         successor: str,
         node: SearchNode,
         heuristic_inflation_factor: float,
-        solve_convex_restriction: bool = False,
+        solve_convex_restriction: bool = True,
         use_convex_relaxation: bool = False,
         override_skip_post_solve: Optional[bool] = None,
     ) -> ShortestPathSolution:

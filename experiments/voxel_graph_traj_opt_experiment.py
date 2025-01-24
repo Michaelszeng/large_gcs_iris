@@ -43,20 +43,13 @@ def main(cfg: OmegaConf) -> None:
     g = VoxelGraph(
         [Polyhedron.from_vertices([[0.9,0.1],[0.1,0.9],[0.9,0.9]])],  # obstacles
         np.array([0, 0]),  # source
-        np.array([2.5, 2.5]),  # target
-        np.array([[-3,  3],    # workspace
-                  [-3,  3]]),
+        np.array([5, 5]),  # target
+        np.array([[-6,  6],    # workspace
+                  [-6,  6]]),
         default_voxel_size = 1,
         should_add_gcs = True,
         should_add_const_edge_cost = True,
     )
-    
-    # g.generate_successors("source")
-    # g.generate_successors("0_0_")
-    # g.generate_successors("-1_-1_")
-    # print(g.vertices.keys())
-    # g.plot()
-    # plt.show()
     
     cost_estimator: CostEstimator = instantiate(
         cfg.cost_estimator, graph=g, add_const_cost=cfg.should_add_const_edge_cost
@@ -74,23 +67,12 @@ def main(cfg: OmegaConf) -> None:
 
     sol: ShortestPathSolution = alg.run()
 
-    g.plot()
+    g.plot_solution(sol)
     plt.show()
     
     return
     
     
-
-    graph_file = ContactGraphGeneratorParams.inc_graph_file_path_from_name(
-        cfg.graph_name
-    )
-    cg = IncrementalContactGraph.load_from_file(
-        graph_file,
-        should_incl_simul_mode_switches=cfg.should_incl_simul_mode_switches,
-        should_add_const_edge_cost=cfg.should_add_const_edge_cost,
-        should_add_gcs=True,
-        should_use_l1_norm_vertex_cost=cfg.should_use_l1_norm_vertex_cost,
-    )
 
     if "load_checkpoint_log_dir" in cfg.algorithm:
         # Make sure checkpoint graph is the same as current graph
@@ -100,21 +82,6 @@ def main(cfg: OmegaConf) -> None:
         if cfg.graph_name != checkpoint_cfg.graph_name:
             raise ValueError("Checkpoint graph name does not match current graph name.")
 
-    cost_estimator: CostEstimator = instantiate(
-        cfg.cost_estimator, graph=cg, add_const_cost=cfg.should_add_const_edge_cost
-    )
-    domination_checker: DominationChecker = instantiate(
-        cfg.domination_checker, graph=cg
-    )
-    alg: SearchAlgorithm = instantiate(
-        cfg.algorithm,
-        graph=cg,
-        cost_estimator=cost_estimator,
-        domination_checker=domination_checker,
-        vis_params=AlgVisParams(log_dir=full_log_dir),
-    )
-
-    sol: ShortestPathSolution = alg.run()
 
     save_outputs = cfg.save_metrics or cfg.save_visualization or cfg.save_solution
     if save_outputs:

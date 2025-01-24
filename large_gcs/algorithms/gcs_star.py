@@ -182,7 +182,6 @@ class GcsStar(SearchAlgorithm):
             successor,
             n,
             heuristic_inflation_factor=self._heuristic_inflation_factor,
-            solve_convex_restriction=True,
             override_skip_post_solve=self._override_skip_post_solve,
         )
 

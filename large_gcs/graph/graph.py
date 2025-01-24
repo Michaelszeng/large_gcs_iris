@@ -417,26 +417,6 @@ class Graph:
             if edge.u == vertex_name or edge.v == vertex_name
         ]
 
-    def solve_shortest_path(self, use_convex_relaxation=False) -> ShortestPathSolution:
-        """Solve the shortest path problem."""
-        assert self._source_name is not None
-        assert self._target_name is not None
-        result = self._gcs.SolveShortestPath(
-            self.vertices[self._source_name].gcs_vertex,
-            self.vertices[self._target_name].gcs_vertex,
-            (
-                self._gcs_options_convex_relaxation
-                if use_convex_relaxation
-                else self._gcs_options_wo_relaxation
-            ),
-        )
-
-        sol = self._parse_result(result)
-
-        # Optional post solve hook for subclasses
-        self._post_solve(sol)
-        return sol
-
     def solve_convex_restriction(
         self,
         active_edge_keys: List[str],
@@ -444,6 +424,10 @@ class Graph:
         should_return_result: bool = False,
         solver_options: Optional[SolverOptions] = None,
     ) -> ShortestPathSolution:
+        """
+        skip_post_solve: (sort of a bad name) Simply choose to only partially 
+        parse the result and skip returning the full vertex and edge paths.
+        """
         edge_path = [self.edges[edge_key] for edge_key in active_edge_keys]
         vertex_name_path = self._convert_conv_res_edges_to_vertex_path(edge_path)
         vertex_path = [self.vertices[vertex_name] for vertex_name in vertex_name_path]
@@ -553,16 +537,20 @@ class Graph:
         return sols
 
     def _post_solve(self, sol: ShortestPathSolution):
-        """Optional post solve hook for subclasses."""
+        """Optional post solve hook for subclasses. Unimplemented here."""
 
     @staticmethod
     def _parse_partial_convex_restriction_result(
         result: MathematicalProgramResult, should_return_result: bool = False
     ) -> ShortestPathSolution:
-        """Only return is_success, cost and time.
+        """
+        Creates ShortestPathSolution object from the result of a convex 
+        restriction solve.
+        
+        Only return is_success, cost and time.
 
         Skip the work of processing the vertex, edge, ambient and flow
-        paths.
+        paths (for some slight computational savings).
         """
         cost = result.get_optimal_cost()
         time = result.get_solver_details().optimizer_time
@@ -583,6 +571,10 @@ class Graph:
         gcs_vertex_path: List,
         should_return_result: bool = False,
     ) -> ShortestPathSolution:
+        """
+        Creates ShortestPathSolution object from the result of a convex 
+        restriction solve.
+        """
         cost = result.get_optimal_cost()
         time = result.get_solver_details().optimizer_time
 
