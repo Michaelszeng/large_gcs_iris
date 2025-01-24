@@ -111,42 +111,67 @@ class VoxelGraph(Graph):
         else:
             voxel_center = self.vertices[vertex_name].convex_set.center
             vertex_indices = vertex_name.split("_")
-            
-            
-            
+
             # Generate all possible neighbor offsets (-1, 0, 1) for each dimension
             offsets = list(product([-1, 0, 1], repeat=self.base_dim))
             
             # Iterate through all possible neighbors
             for offset in offsets:
-                print(offset)
                 # Skip the current voxel (all zeros offset)
                 if all(o == 0 for o in offset):
                     continue
                 
-                # Generate the neighbor voxel center and name
-                neighbor_voxel_center = voxel_center + np.array(offset) * self.default_voxel_size
+                # Generate the neighbor voxel name
                 neighbor_voxel_name = ""
                 for d in range(self.base_dim):
                     neighbor_voxel_name += f"{int(vertex_indices[d]) + offset[d]}_"
                     
-                print(neighbor_voxel_name)
+                # Skip any voxels that already exist
+                if neighbor_voxel_name in self.vertices:
+                    continue
+                
+                # Generate the neighbor voxel
+                neighbor_voxel_center = voxel_center + np.array(offset) * self.default_voxel_size
+                neighbor_voxel = Voxel(neighbor_voxel_center, self.default_voxel_size, self.num_knot_points)
+                
+                # Skip voxel if it is in collision
+                if not self._is_voxel_collision_free(neighbor_voxel):
+                    continue
                 
                 neighbors.append((
                     vertex_name, 
                     neighbor_voxel_name, 
                     False, 
-                    Voxel(neighbor_voxel_center, self.default_voxel_size, self.num_knot_points)
+                    neighbor_voxel
                 ))
                 
         for neighbor_data in neighbors:
             self._generate_neighbor(*neighbor_data)
+            
+            # Draw edges to the target vertex if it is in the neighbor voxel
+            neighbor_voxel_name = neighbor_data[1]
+            if self._does_vertex_have_possible_edge_to_target(neighbor_voxel_name):
+                # Directed edge to target
+                self.add_edge(
+                    Edge(
+                        u=neighbor_voxel_name,
+                        v="target",
+                        costs=self._create_single_edge_costs(neighbor_voxel_name, "target"),
+                        constraints=self._create_single_edge_constraints(neighbor_voxel_name, "target"),
+                    ),
+                    should_add_to_gcs=self._should_add_gcs,
+                )
                 
     def _generate_neighbor(
         self, u: str, v: str, is_v_in_vertices: bool, v_set: Voxel = None
     ) -> None:
-        """Generates a neighbor and adds it to the graph, also adds an edge from 
-        u to v."""
+        """
+        Generates a neighbor (v) and adds it to the graph.
+        
+        Also adds an edge from u to v and v to u (all edges are undirected).
+        and adds edges between the generated neighbor and all intersecting 
+        voxels.
+        """
         if not is_v_in_vertices:
             vertex = Vertex(
                 v_set,
@@ -154,15 +179,49 @@ class VoxelGraph(Graph):
                 constraints=self._create_single_vertex_constraints(v_set),
             )
             self.add_vertex(vertex, v, should_add_to_gcs=self._should_add_gcs)
-        self.add_edge(
-            Edge(
-                u=u,
-                v=v,
-                costs=self._create_single_edge_costs(u, v),
-                constraints=self._create_single_edge_constraints(u, v),
-            ),
-            should_add_to_gcs=self._should_add_gcs,
-        )
+        # self.add_undirected_edge(
+        #     Edge(
+        #         u=u,
+        #         v=v,
+        #         costs=self._create_single_edge_costs(u, v),
+        #         constraints=self._create_single_edge_constraints(u, v),
+        #     ),
+        #     should_add_to_gcs=self._should_add_gcs,
+        # )
+        
+        # Add edges between the generated neighbor (v) and all adjacent voxels
+        # Generate all possible neighbor offsets (-1, 0, 1) for each dimension
+        offsets = list(product([-1, 0, 1], repeat=self.base_dim))
+        v_indices = v.split("_")
+        
+        # Iterate through all possible neighbors of v (call them w)
+        for offset in offsets:
+            # Skip the current voxel (all zeros offset)
+            if all(o == 0 for o in offset):
+                continue
+            
+            # Generate w's name
+            neighbor_voxel_name = ""
+            for d in range(self.base_dim):
+                neighbor_voxel_name += f"{int(v_indices[d]) + offset[d]}_"
+            
+            if neighbor_voxel_name in self.vertices:                           
+                # Add edge between v and w
+                self.add_undirected_edge(
+                    Edge(u=v, v=neighbor_voxel_name, costs=[], constraints=[]),
+                    should_add_to_gcs=self._should_add_gcs,
+                )
+            
+    def _is_voxel_collision_free(self, voxel: Voxel) -> bool:
+        """Only handles Polyhedron obstacles for now."""
+        for obstacle in self.obstacles:
+            if not obstacle.set.Intersection(voxel.set_in_space.MakeHPolyhedron()).IsEmpty():
+                return False
+        return True
+    
+    def _does_vertex_have_possible_edge_to_target(self, vertex_name: str) -> bool:
+        """Determine if we can add an edge to the target vertex."""
+        return self.vertices[vertex_name].convex_set.set_in_space.PointInSet(self.t)
         
     ############################################################################
     ### VERTEX AND EDGE COSTS AND CONSTRAINTS ###
@@ -231,6 +290,16 @@ class VoxelGraph(Graph):
             raise ValueError("Can only plot 2D voxel graphs")
             
         plt.figure(figsize=(8, 8))
+        
+        # Plot obstacles
+        for obstacle in self.obstacles:
+            if hasattr(obstacle, 'vertices'):
+                vertices = obstacle.vertices
+                # Close the polygon by appending first vertex
+                vertices = np.vstack((vertices, vertices[0]))
+                plt.fill(vertices[:, 0], vertices[:, 1], 
+                        color='black', alpha=0.5, 
+                        edgecolor='black', linewidth=1)
         
         # Plot voxels
         for vertex_name, vertex in self.vertices.items():

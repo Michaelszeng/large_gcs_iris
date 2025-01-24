@@ -213,7 +213,9 @@ class Graph:
         """Add a vertex to the graph."""
         if name == "":
             name = len(self.vertices)
-        assert name not in self.vertices
+        if name in self.vertices:
+            logger.warning(f"Vertex {name} already exists in graph. Skipping...")
+            return
 
         # Set default costs and constraints if necessary
         v = vertex
@@ -291,6 +293,11 @@ class Graph:
 
     def add_edge(self, edge: Edge, should_add_to_gcs: bool = True):
         """Add an edge to the graph."""
+        # Check if the edge already exists
+        if edge.key in self.edges:
+            logger.warning(f"Edge {edge.key} already exists in graph. Skipping...")
+            return self.edges[edge.key]
+        
         e = copy(edge)
         # Set default costs and constraints if necessary
         if self._default_costs_constraints:  # Have defaults
@@ -328,6 +335,11 @@ class Graph:
         self.edges[e.key] = e
         self._adjacency_list[e.u].append(e.v)
         return e
+    
+    def add_undirected_edge(self, edge: Edge, should_add_to_gcs: bool = True):
+        """Add an undirected edge to the graph."""
+        self.add_edge(edge, should_add_to_gcs)
+        self.add_edge(Edge(edge.v, edge.u, edge.costs, edge.constraints), should_add_to_gcs)
 
     def remove_edge(self, edge_key: str, remove_from_gcs: bool = True):
         """Remove an edge from the graph."""

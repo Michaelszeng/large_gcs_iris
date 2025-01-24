@@ -8,7 +8,7 @@ from large_gcs.geometry.convex_set import ConvexSet
 
 class Voxel(ConvexSet):
     """
-    Hyper-rectangular convex set defined by a center and a voxel size.
+    Voxel convex set defined by a center and a voxel size (side length).
     """
 
     def __init__(self, center, voxel_size, num_knot_points):
@@ -22,9 +22,15 @@ class Voxel(ConvexSet):
         """
         lb = np.hstack([center - voxel_size / 2] * num_knot_points)  # Repeat the lower bound for each knot point
         ub = np.hstack([center + voxel_size / 2] * num_knot_points)  # Repeat the upper bound for each knot point
-        self._voxel = DrakeHyperrectangle(lb, ub)
+        self._set = DrakeHyperrectangle(lb, ub)
+        
+        lb_in_space = np.hstack([center - voxel_size / 2])
+        ub_in_space = np.hstack([center + voxel_size / 2])
+        self._set_in_space = DrakeHyperrectangle(lb_in_space, ub_in_space)
+        
         self._voxel_size = voxel_size
         self._num_knot_points = num_knot_points
+        
     def _plot(self, ax=None, **kwargs):
         if ax is None:
             ax = plt.gca()
@@ -46,25 +52,35 @@ class Voxel(ConvexSet):
     
     @property
     def lb(self):
-        return self._voxel.lb()
+        """Lower bound of voxel in space; NOT of the underlying convex set."""
+        return self._set.lb()[:self.dim]
     
     @property
     def ub(self):
-        return self._voxel.ub()
+        """Upper bound of voxel in space; NOT of the underlying convex set."""
+        return self._set.ub()[:self.dim]
 
     @property
     def dim(self):
         """Dimension of space; NOT of the underlying convex set."""
-        return self._voxel.lb().shape[0] // self._num_knot_points
+        return self._set.lb().shape[0] // self._num_knot_points
 
     @property
     def set(self):
-        return self._voxel
+        """Hyperrectangle representation of the voxel in knot space."""
+        return self._set
+    
+    @property
+    def set_in_space(self):
+        """Hyperrectangle representation of the voxel in space."""
+        return self._set_in_space
 
     @property
     def center(self):
-        return ((self._voxel.lb() + self._voxel.ub()) / 2)[:self.dim]
+        """Center of the voxel in space; NOT of the underlying convex set."""
+        return ((self._set.lb() + self._set.ub()) / 2)[:self.dim]
     
     @property
     def size(self):
+        """Side length of voxel"""
         return self._voxel_size

@@ -19,6 +19,7 @@ from large_gcs.graph.incremental_contact_graph import IncrementalContactGraph
 from large_gcs.graph_generators.contact_graph_generator import (
     ContactGraphGeneratorParams,
 )
+from large_gcs.geometry.polyhedron import Polyhedron
 from large_gcs.utils.hydra_utils import get_cfg_from_folder
 
 logger = logging.getLogger(__name__)
@@ -40,18 +41,19 @@ def main(cfg: OmegaConf) -> None:
     logger.info(cfg)
     
     g = VoxelGraph(
-        [],  # obstacles
+        [Polyhedron.from_vertices([[0.9,0.1],[0.1,0.9],[0.9,0.9]])],  # obstacles
         np.array([0, 0]),  # source
         np.array([2.5, 2.5]),  # target
         np.array([[-3,  3],    # workspace
                   [-3,  3]]),
-            default_voxel_size = 1,
+        default_voxel_size = 1,
         should_add_gcs = True,
         should_add_const_edge_cost = True,
     )
     
     g.generate_successors("source")
     g.generate_successors("0_0_")
+    g.generate_successors("-1_-1_")
     print(g.vertices.keys())
     g.plot()
     plt.show()
