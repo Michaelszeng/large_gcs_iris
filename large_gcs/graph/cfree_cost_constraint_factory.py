@@ -69,34 +69,9 @@ def create_cfree_continuity_edge_constraint(base_dim: int, u: str, v: str, num_k
         v_part[:, :base_dim] = -np.eye(base_dim)  # select first knot point
 
     A = np.hstack((u_part, v_part))
-    b = np.zeros((base_dim,))
+    print(f"A: {A}")
+    b = np.zeros((base_dim,1))
     
-    return LinearEqualityConstraint(A, b)
-
-
-def create_source_region_edge_constraint(base_dim: int) -> LinearEqualityConstraint:
-    """
-    Equates source region point to vertex' first knot point.
-    
-    A = [I, -I, 0]
-    b = 0
-    x = [s_x, v_x0, v_x1]
-    """
-    A = np.hstack((np.eye(base_dim), -np.eye(base_dim), np.zeros((base_dim, base_dim))))
-    b = np.zeros((base_dim,))
-    return LinearEqualityConstraint(A, b)
-
-
-def create_region_target_edge_constraint(base_dim: int) -> LinearEqualityConstraint:
-    """
-    Equates target region point to vertex' last knot point.
-    
-    A = [0, I, -I]
-    b = 0
-    x = [v_x0, v_x1, t_x]
-    """
-    A = np.hstack((np.zeros((base_dim, base_dim)), np.eye(base_dim), -np.eye(base_dim)))
-    b = np.zeros((base_dim,))
     return LinearEqualityConstraint(A, b)
 
 

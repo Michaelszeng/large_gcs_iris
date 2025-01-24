@@ -202,7 +202,12 @@ class VoxelGraph(Graph):
             if neighbor_voxel_name in self.vertices:                           
                 # Add edge between v and w
                 self.add_undirected_edge(
-                    Edge(u=v, v=neighbor_voxel_name, costs=[], constraints=[]),
+                    Edge(
+                        u=v, 
+                        v=neighbor_voxel_name, 
+                        costs=self._create_single_edge_costs(v, neighbor_voxel_name),
+                        constraints=self._create_single_edge_constraints(v, neighbor_voxel_name),
+                    ),
                     should_add_to_gcs=self._should_add_gcs,
                 )
             

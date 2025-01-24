@@ -66,6 +66,7 @@ def main(cfg: OmegaConf) -> None:
     )
 
     sol: ShortestPathSolution = alg.run()
+    logger.info(f"Solution Trajectory: {sol.trajectory}")
 
     g.plot_solution(sol)
     plt.show()

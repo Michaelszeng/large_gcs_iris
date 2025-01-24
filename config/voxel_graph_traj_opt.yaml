@@ -6,7 +6,6 @@ defaults:
   - hydra: hydra
 
 graph_name: "cg_simple_1"
-should_incl_simul_mode_switches: false
 should_add_const_edge_cost: true
 should_use_l1_norm_vertex_cost: true
 
