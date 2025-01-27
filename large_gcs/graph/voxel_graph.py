@@ -7,15 +7,12 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from scipy.spatial import ConvexHull
 import numpy as np
 from pydrake.all import (
     Constraint, 
     Cost, 
-    Expression, 
-    eq, 
-    LinearCost,
-    L2NormCost,
-    BoundingBoxConstraint,
 )
 from tqdm import tqdm
 
@@ -48,7 +45,7 @@ class VoxelGraph(Graph):
         default_voxel_size: float = 0.2,
         num_knot_points_per_voxel: int = 2,
         should_add_gcs: bool = True,
-        should_add_const_edge_cost: bool = True,
+        const_edge_cost: float = 1e-4,
     ):
         Graph.__init__(self, workspace=workspace)
         assert self.workspace is not None, "Must specify workspace"
@@ -60,7 +57,7 @@ class VoxelGraph(Graph):
         self.default_voxel_size = default_voxel_size
         self.num_knot_points = num_knot_points_per_voxel
         self._should_add_gcs = should_add_gcs
-        self._should_add_const_edge_cost = should_add_const_edge_cost
+        self._const_edge_cost = const_edge_cost
         
         self.base_dim = np.shape(s)[0]  # dimension of space
         
@@ -255,7 +252,7 @@ class VoxelGraph(Graph):
 
     def _create_single_edge_costs(self, u: str, v: str) -> List[Cost]:
         # Penalizes each active edge a constant value
-        return [create_cfree_constant_edge_cost(self.base_dim, u, v, self.num_knot_points, constant_cost=1)]
+        return [create_cfree_constant_edge_cost(self.base_dim, u, v, self.num_knot_points, constant_cost=self._const_edge_cost)]
 
     def _create_edge_constraints(
         self, edges: List[Tuple[str, str]]
@@ -276,129 +273,172 @@ class VoxelGraph(Graph):
         show_source: bool = True,
         show_target: bool = True,
     ):
-        """Plot the voxel graph in 2D.
+        """
+        Plot the voxel graph in 2D or 3D.
         
         Args:
             show_source: Whether to show the source point
             show_target: Whether to show the target point
         
         Raises:
-            ValueError: If base_dim is not 2
+            ValueError: If base_dim is not 2 or 3
         """
-        if self.base_dim != 2:
-            raise ValueError("Can only plot 2D voxel graphs")
+        if self.base_dim not in [2, 3]:
+            raise ValueError("Can only plot 2D or 3D voxel graphs")
             
-        plt.figure(figsize=(8, 8))
+        fig = plt.figure(figsize=(8, 8))
+        if self.base_dim == 3:
+            ax = fig.add_subplot(111, projection='3d')
+        else:
+            ax = fig.add_subplot(111)
         
         # Plot obstacles
         for obstacle in self.obstacles:
             if hasattr(obstacle, 'vertices'):
                 vertices = obstacle.vertices
-                # Close the polygon by appending first vertex
-                vertices = np.vstack((vertices, vertices[0]))
-                plt.fill(vertices[:, 0], vertices[:, 1], 
-                        color='black', alpha=0.5, 
-                        edgecolor='black', linewidth=1)
+                if self.base_dim == 2:
+                    # Close the polygon by appending the first vertex
+                    vertices = np.vstack((vertices, vertices[0]))
+                    ax.fill(
+                        vertices[:, 0], vertices[:, 1],
+                        color='black', alpha=0.5, edgecolor='black', linewidth=1
+                    )
+                elif self.base_dim == 3:
+                    hull = ConvexHull(vertices)
+                    
+                    # Each "simplex" in the hull is a triangle (defined by 3 vertices)
+                    faces = [vertices[s] for s in hull.simplices]
+                    
+                    # Create a Poly3DCollection (triangular faces) for the hull
+                    hull_collection = Poly3DCollection(
+                        faces,
+                        alpha=0.5,          # Transparency
+                        facecolors='black', # Fill color
+                        edgecolors='black', # Edge color
+                        linewidths=1
+                    )
+                    
+                    # Add this 3D collection of triangles to the Axes
+                    ax.add_collection3d(hull_collection)
         
         # Plot voxels
         for vertex_name, vertex in self.vertices.items():
             if isinstance(vertex.convex_set, Voxel):
                 center = vertex.convex_set.center
                 size = vertex.convex_set.size
-                rect = plt.Rectangle(
-                    center - size/2,
-                    size,
-                    size,
-                    fill=False,
-                    edgecolor='black',
-                    linewidth=1
-                )
-                plt.gca().add_patch(rect)
+                if self.base_dim == 2:
+                    rect = plt.Rectangle(
+                        center - size / 2, size, size,
+                        fill=False, edgecolor='black', linewidth=1
+                    )
+                    ax.add_patch(rect)
+                elif self.base_dim == 3:
+                    r = size / 2
+                    for s, e in combinations(np.array(list(product([-r, r], repeat=3))), 2):
+                        if np.sum(np.abs(s - e)) == r * 2:
+                            ax.plot3D(
+                                *zip(center + s, center + e), color='black', linewidth=1
+                            )
         
         # Plot edges
         for edge in self.edges.values():
             u_center = self.vertices[edge.u].convex_set.center
             v_center = self.vertices[edge.v].convex_set.center
-            plt.arrow(
-                u_center[0],
-                u_center[1],
-                v_center[0] - u_center[0],
-                v_center[1] - u_center[1],
-                color='grey',
-                width=0.01,
-                head_width=0.05,
-                alpha=0.5,
-                length_includes_head=True
-            )
+            if self.base_dim == 2:
+                ax.arrow(
+                    u_center[0], u_center[1],
+                    v_center[0] - u_center[0], v_center[1] - u_center[1],
+                    color='grey', width=0.01, head_width=0.05,
+                    alpha=0.5, length_includes_head=True
+                )
+            elif self.base_dim == 3:
+                pass  # for visibility, don't plot edges
+                # ax.plot3D(
+                #     [u_center[0], v_center[0]],
+                #     [u_center[1], v_center[1]],
+                #     [u_center[2], v_center[2]],
+                #     color='grey', alpha=0.5
+                # )
         
         # Plot source and target
         if show_source:
-            plt.plot(
-                self.s[0],
-                self.s[1],
-                marker='*',
-                color='green',
-                markersize=15,
-                label='Source'
-            )
+            if self.base_dim == 2:
+                ax.plot(
+                    self.s[0], self.s[1],
+                    marker='*', color='green', markersize=15, label='Source'
+                )
+            elif self.base_dim == 3:
+                ax.scatter(
+                    self.s[0], self.s[1], self.s[2],
+                    marker='*', color='green', s=100, label='Source'
+                )
         if show_target:
-            plt.plot(
-                self.t[0],
-                self.t[1],
-                marker='x',
-                color='red',
-                markersize=15,
-                label='Target'
-            )
-            
-        # Set plot properties
+            if self.base_dim == 2:
+                ax.plot(
+                    self.t[0], self.t[1],
+                    marker='x', color='red', markersize=15, label='Target'
+                )
+            elif self.base_dim == 3:
+                ax.scatter(
+                    self.t[0], self.t[1], self.t[2],
+                    marker='x', color='red', s=100, label='Target'
+                )
+        
         if self.workspace is not None:
-            plt.xlim(self.workspace[0])
-            plt.ylim(self.workspace[1])
+            ax.set_xlim(self.workspace[0])
+            ax.set_ylim(self.workspace[1])
+            if self.base_dim == 3:    
+                ax.set_zlim(self.workspace[2])
+        
+        if self.base_dim == 2:
+            ax.set_aspect('equal')
+        elif self.base_dim == 3:
+            ax.set_box_aspect([1, 1, 1])
             
-        plt.grid(True, alpha=0.3)
-        plt.gca().set_aspect('equal')
-        plt.legend()
-        plt.title('Voxel Graph')
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+        ax.set_title('Voxel Graph')
+        
+        return ax
+
 
     def plot_solution(
         self,
         sol: ShortestPathSolution,
         loc: Optional[Path] = None,
     ):
-        """Plot the voxel graph with the solution path overlaid.
+        """Plot the voxel graph with the solution path overlaid in 2D or 3D.
         
         Args:
             sol: Solution containing trajectory points
             loc: Optional path to save the plot
         """
-        if self.base_dim != 2:
-            raise ValueError("Can only plot 2D voxel graphs")
+        ax = self.plot()
         
-        self.plot()
-        
-        # Extract trajectory points, handling both 2D and 4D points
+        # Extract trajectory points from vertices, handling both source and target 
+        # (which contain only 1 point) and other vertices (which have multiple knot points)
         points = []
         for point in sol.trajectory:
-            if len(point) == 2:
+            if len(point) == self.base_dim:
                 # Source/target points
                 points.append(point)
             else:
                 # Points with two knot points
-                points.append(point[:2])  # 1st knot point
-                points.append(point[2:])  # 2nd knot point
+                points.append(point[:self.base_dim])  # 1st knot point
+                points.append(point[self.base_dim:])  # 2nd knot point
         
         trajectory = np.vstack(points)
         
-        plt.plot(
-            trajectory[:, 0],  # x coordinates
-            trajectory[:, 1],  # y coordinates
-            'bo-',  # blue dots with connecting lines
-            linewidth=2,
-            markersize=5,
-            label='Path',
-            zorder=10  # ensure path is drawn on top
-        )
+        if self.base_dim == 2:
+            plt.plot(
+                trajectory[:, 0], trajectory[:, 1],
+                'bo-', linewidth=2, markersize=5, label='Path', zorder=10
+            )
+        elif self.base_dim == 3:
+            ax.plot3D(
+                trajectory[:, 0], trajectory[:, 1], trajectory[:, 2],
+                'bo-', linewidth=2, markersize=5, label='Path'
+            )
         
         plt.legend()
         

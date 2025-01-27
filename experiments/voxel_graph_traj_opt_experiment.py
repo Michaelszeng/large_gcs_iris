@@ -40,15 +40,27 @@ def main(cfg: OmegaConf) -> None:
 
     logger.info(cfg)
     
+    # g = VoxelGraph(
+    #     [Polyhedron.from_vertices([[0.9,0.1],[0.1,0.9],[0.9,0.9]])],  # obstacles
+    #     np.array([0, 0]),  # source
+    #     np.array([2, 2]),  # target
+    #     np.array([[-4, 4],    # workspace x-lim
+    #               [-4, 4]]),  # workspace y-lim
+    #     default_voxel_size = 1,
+    #     should_add_gcs = True,
+    #     const_edge_cost=cfg.const_edge_cost,
+    # )
+    
     g = VoxelGraph(
-        [Polyhedron.from_vertices([[0.9,0.1],[0.1,0.9],[0.9,0.9]])],  # obstacles
-        np.array([0, 0]),  # source
-        np.array([5, 5]),  # target
-        np.array([[-6,  6],    # workspace
-                  [-6,  6]]),
+        [Polyhedron.from_vertices([[0.9,0.1,-1],[0.1,0.9,-1],[0.9,0.9,-1],[0.9,0.1,1],[0.1,0.9,1],[0.9,0.9,1]])],  # obstacles
+        np.array([0, 0, 0]),  # source
+        np.array([2, 2, 2]),  # target
+        np.array([[-4,  4],    # workspace x-lim
+                  [-4,  4],    # workspace y-lim
+                  [-4,  4]]),  # workspace z-lim
         default_voxel_size = 1,
         should_add_gcs = True,
-        should_add_const_edge_cost = True,
+        const_edge_cost=cfg.const_edge_cost,
     )
     
     cost_estimator: CostEstimator = instantiate(
@@ -61,6 +73,7 @@ def main(cfg: OmegaConf) -> None:
         cfg.algorithm,
         graph=g,
         cost_estimator=cost_estimator,
+        heuristic_inflation_factor=cfg.heuristic_inflation_factor,
         domination_checker=domination_checker,
         vis_params=AlgVisParams(log_dir=full_log_dir),
     )

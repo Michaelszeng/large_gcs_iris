@@ -187,10 +187,6 @@ class Graph:
             assert (
                 workspace.shape[1] == 2
             ), "Each row of workspace_bounds should specify lower and upper bounds for a dimension"
-            if workspace.shape[0] > 2:
-                raise NotImplementedError(
-                    "Workspace bounds with more than 2 dimensions not yet supported"
-                )
         self.workspace = workspace
 
         self._gcs = GraphOfConvexSets()

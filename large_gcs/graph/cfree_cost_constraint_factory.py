@@ -109,6 +109,9 @@ def shortcut_edge_l2norm_cost_factory(
     
     Linear cost of the form: a'x + b, where a is a vector of coefficients and b is a constant.
     
+    Heuristic_inflation_factor simply scales the outputted cost, which may be
+    useful when using this function to generate the heuristic cost, to prune
+    more aggressively.
     
     A = [0,...,0, I, -I]
                   ^   ^
@@ -126,7 +129,7 @@ def shortcut_edge_l2norm_cost_factory(
     
     target_part = -np.eye(base_dim)  # target is a point and so has only base_dim variables
 
-    A = np.hstack((u_part, target_part))
+    A = heuristic_inflation_factor * np.hstack((u_part, target_part))
     b = np.zeros((base_dim, 1))
     
     costs = [L2NormCost(A, b)]
