@@ -56,6 +56,36 @@ def generate_all_offsets(dim):
     return offsets[mask]
 
 
+def generate_all_offsets_no_diagonal(dim):
+    """
+    Generate all offsets of length `dim` where exactly one coordinate is ±1
+    and the remaining coordinates are 0.
+    
+    Basically, this only connects neighbors that share a face (not just an edge
+    or corner).
+    
+    For example, if dim=2:
+        [[ 1,  0],
+         [ 0,  1],
+         [-1,  0],
+         [ 0, -1]]
+    """
+    # We know we'll have 2 * dim offsets in total
+    offsets = np.zeros((2 * dim, dim), dtype=np.int8)
+
+    row = 0
+    for i in range(dim):
+        # +1 in the i-th coordinate
+        offsets[row, i] = 1
+        row += 1
+        
+        # -1 in the i-th coordinate
+        offsets[row, i] = -1
+        row += 1
+
+    return offsets
+
+
 class VoxelGraph(Graph):
     def __init__(
         self,
@@ -83,11 +113,12 @@ class VoxelGraph(Graph):
         self.base_dim = np.shape(s)[0]  # dimension of space
         
         self.offsets = generate_all_offsets(self.base_dim)  # convenience variable containing all possible offsets in {-1,0,1}^dim
+        # self.offsets = generate_all_offsets_no_diagonal(self.base_dim)
         
         sets = []
         set_ids = []
 
-        sets += [Point(s), Point(t)]      
+        sets += [Point(s), Point(t)]
         set_ids += ["source", "target"]
 
         # Add convex sets to graph (Need to do this before generating edges)
@@ -355,19 +386,31 @@ class VoxelGraph(Graph):
                         # Add this 3D collection of triangles to the Axes
                         ax.add_collection3d(hull_collection)
             
-            # Create a line object for the path that we'll update
+            # Create line objects for the path that we'll update
+            # One line object for the main path, one for the shortcut edge (which will be red instead of blue)
             if self.base_dim == 2:
                 self.path_line, = ax.plot(
                     [], [], 'bo-',
                     linewidth=2, markersize=5,
-                    label='Current Path',
+                    label='Path',
                     zorder=10
+                )
+                self.path_line_final_segment, = ax.plot(
+                    [], [], 'ro-',  # Red color for final segment
+                    linewidth=2, markersize=5,
+                    label='Final Segment',
+                    zorder=11  # Higher zorder to draw on top
                 )
             else:
                 self.path_line, = ax.plot3D(
                     [], [], [], 'bo-',
                     linewidth=2, markersize=5,
-                    label='Current Path'
+                    label='Path'
+                )
+                self.path_line_final_segment, = ax.plot3D(
+                    [], [], [], 'ro-',  # Red color for final segment
+                    linewidth=2, markersize=5,
+                    label='Final Segment'
                 )
                 
             # Initialize empty collections for voxels
@@ -411,9 +454,30 @@ class VoxelGraph(Graph):
                     )
                     self.animation_ax.add_patch(rect)
                     self.voxel_patches.append(rect)
+                elif self.base_dim == 3:
+                    # Create the 8 vertices of the cube
+                    r = size / 2
+                    cube_vertices = np.array(list(product([center[0]-r, center[0]+r],
+                                                          [center[1]-r, center[1]+r],
+                                                          [center[2]-r, center[2]+r])))
+                    
+                    # Define the 12 edges of the cube
+                    edges = []
+                    for i, j in combinations(range(8), 2):
+                        if np.sum(np.abs(cube_vertices[i] - cube_vertices[j])) == size:
+                            line, = self.animation_ax.plot3D(
+                                [cube_vertices[i,0], cube_vertices[j,0]],
+                                [cube_vertices[i,1], cube_vertices[j,1]],
+                                [cube_vertices[i,2], cube_vertices[j,2]],
+                                color='black', linewidth=1
+                            )
+                            edges.append(line)
+                    self.voxel_patches.extend(edges)
         
         # Update trajectory if provided
         if sol is not None and sol.trajectory is not None:
+            # Extract trajectory points from vertices, handling both source and target 
+            # (which contain only 1 point) and other vertices (which have multiple knot points)
             points = []
             for point in sol.trajectory:
                 if len(point) == self.base_dim:
@@ -423,7 +487,85 @@ class VoxelGraph(Graph):
                     points.append(point[self.base_dim:])
             
             trajectory = np.vstack(points)
-            self.path_line.set_data(trajectory[:, 0], trajectory[:, 1])
+            
+            if self.base_dim == 2:
+                # Set trajectory points
+                # Main path (all but last segment)
+                self.path_line.set_data(trajectory[:-1, 0], trajectory[:-1, 1])
+                # Final segment (last two points)
+                self.path_line_final_segment.set_data(trajectory[-2:, 0], trajectory[-2:, 1])
+                
+                # Highlight voxels in the vertex path
+                for vertex_name in sol.vertex_path:
+                    if vertex_name not in ["source", "target"]:
+                        vertex = self.vertices[vertex_name]
+                        center = vertex.convex_set.center
+                        size = vertex.convex_set.size
+                        rect = plt.Rectangle(
+                            center - size / 2, size, size,
+                            fill=True, facecolor='yellow', alpha=0.3,
+                            edgecolor='black', linewidth=1
+                        )
+                        self.animation_ax.add_patch(rect)
+                        self.voxel_patches.append(rect)
+                        
+            elif self.base_dim == 3:
+                # Set trajectory points
+                # Main path (all but last segment)
+                self.path_line.set_data(trajectory[:-1, 0], trajectory[:-1, 1])
+                self.path_line.set_3d_properties(trajectory[:-1, 2])
+                # Final segment
+                self.path_line_final_segment.set_data(trajectory[-2:, 0], trajectory[-2:, 1])
+                self.path_line_final_segment.set_3d_properties(trajectory[-2:, 2])
+                
+                # Highlight in the vertex path
+                for vertex_name in sol.vertex_path:
+                    if vertex_name not in ["source", "target"]:
+                        vertex = self.vertices[vertex_name]
+                        center = vertex.convex_set.center
+                        size = vertex.convex_set.size
+                        r = size / 2
+                        
+                        # Create vertices for the 6 faces of the cube
+                        faces = []
+                        # Front and back faces
+                        for z in [center[2]-r, center[2]+r]:
+                            face = np.array([
+                                [center[0]-r, center[1]-r, z],
+                                [center[0]+r, center[1]-r, z],
+                                [center[0]+r, center[1]+r, z],
+                                [center[0]-r, center[1]+r, z]
+                            ])
+                            faces.append(face)
+                        # Left and right faces
+                        for x in [center[0]-r, center[0]+r]:
+                            face = np.array([
+                                [x, center[1]-r, center[2]-r],
+                                [x, center[1]+r, center[2]-r],
+                                [x, center[1]+r, center[2]+r],
+                                [x, center[1]-r, center[2]+r]
+                            ])
+                            faces.append(face)
+                        # Top and bottom faces
+                        for y in [center[1]-r, center[1]+r]:
+                            face = np.array([
+                                [center[0]-r, y, center[2]-r],
+                                [center[0]+r, y, center[2]-r],
+                                [center[0]+r, y, center[2]+r],
+                                [center[0]-r, y, center[2]+r]
+                            ])
+                            faces.append(face)
+                            
+                        # Create the collection of faces
+                        cube = Poly3DCollection(
+                            faces,
+                            facecolors='yellow',
+                            alpha=0.3,
+                            edgecolors='black'
+                        )
+                        self.animation_ax.add_collection3d(cube)
+                        self.voxel_patches.append(cube)
+            
         
         if self.workspace is not None:
             ax.set_xlim(self.workspace[0])
@@ -462,9 +604,6 @@ class VoxelGraph(Graph):
         self.animation_fig.canvas.draw()
         self.animation_fig.canvas.flush_events()
         
-    def plot_current_solution(self, loc: Optional[Path] = None):
-        pass
-
     ### SERIALIZATION METHODS ###
 
     def save_to_file(self, path: str):

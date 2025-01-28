@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 
 import matplotlib.pyplot as plt
 import numpy as np
-from pydrake.all import RandomGenerator
+from pydrake.all import RandomGenerator, Hyperrectangle
 
 logger = logging.getLogger(__name__)
 
@@ -48,14 +48,17 @@ class ConvexSet(ABC):
             samples.append(self.set.UniformSample(generator))
             logger.debug(f"Sampled 1 points from convex set")
             for i in range(n_samples - 1):
-                samples.append(
-                    self.set.UniformSample(
-                        # 500
-                        generator,
-                        previous_sample=samples[-1],
-                        mixing_steps=100,
+                if isinstance(self.set, Hyperrectangle):
+                    # Hyperrectangle doesn't need previous sample or mixing steps
+                    samples.append(self.set.UniformSample(generator))
+                else:
+                    samples.append(
+                        self.set.UniformSample(
+                            generator,
+                            previous_sample=samples[-1],
+                            mixing_steps=100,
+                        )
                     )
-                )
                 logger.debug(f"Sampled {i+2} points from convex set")
         except (RuntimeError, ValueError) as e:
             chebyshev_center = self.set.ChebyshevCenter()

@@ -9,7 +9,6 @@ graph_name: "cg_simple_1"
 heuristic_inflation_factor: 1
 should_add_const_edge_cost: true
 const_edge_cost: 1e-4
-should_use_l1_norm_vertex_cost: true
 
 cost_estimator:
   shortcut_edge_cost_factory: "large_gcs.graph.cfree_cost_constraint_factory.shortcut_edge_l2norm_cost_factory"
