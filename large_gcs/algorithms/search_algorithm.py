@@ -41,10 +41,13 @@ def profile_method(method):
         result = method(self, *args, **kwargs)  # Call the original method
         end_time = time.time()
         elapsed_time = end_time - start_time
-        if elapsed_time > 300:
-            logger.warning(
-                f"Method {method.__name__} took {elapsed_time:.2f} seconds to run."
-            )
+        # if elapsed_time > 300:
+        #     logger.warning(
+        #         f"Method {method.__name__} took {elapsed_time:.2f} seconds to run."
+        #     )
+        logger.info(
+            f"Method {method.__name__} took {elapsed_time:.4f} seconds to run."
+        )
         # Update the AlgMetrics with the elapsed time for the method
         self._alg_metrics.method_times[method.__name__] += elapsed_time
         self._alg_metrics.method_counts[method.__name__] += 1
@@ -75,33 +78,26 @@ class AlgVisParams:
     figsize: tuple = (5, 5)
     fps: int = 3
     dpi: int = 200
-    visited_vertex_color: str = "lightskyblue"
-    visited_edge_color: str = "lightseagreen"
-    frontier_color: str = "lightyellow"
-    exploring_to_color: str = "lightgreen"
-    exploring_from_color: str = "skyblue"
-    edge_color: str = "gray"
-    exploring_edge_color: str = "lime"
-    intermediate_path_color: str = "lightgrey"
-    final_path_color: str = "orange"
+    
+    animate: bool = True
 
 
 @dataclass
 class AlgMetrics:
     """Metrics for the algorithm."""
 
-    n_vertices_expanded: int = 0
-    n_vertices_visited: int = 0
+    n_vertices_expanded: int = 0  # Number of times a path that ends at a new vertex is popped from Q and successors are generated
+    n_vertices_visited: int = 0  # Number of paths to unique vertices is visited (i.e. search node ending at a new vertex is pushed to Q at some point in the search)
     time_wall_clock: float = 0.0
-    n_gcs_solves: int = 0
+    n_gcs_solves: int = 0   # Number of times convex restriction is solved (i.e. `estimate_cost` is called or sampling domination checker takes a sample)
     gcs_solve_time_total: float = 0.0
     gcs_solve_time_iter_mean: float = 0.0
     gcs_solve_time_last_10_mean: float = 0.0
     gcs_solve_time_iter_std: float = 0.0
     gcs_solve_time_iter_min: float = inf
     gcs_solve_time_iter_max: float = 0.0
-    n_vertices_reexpanded: int = 0
-    n_vertices_revisited: int = 0
+    n_vertices_reexpanded: int = 0  # Number of times a path that ends at an already-expanded vertex is popped from Q and new paths to that vertex's successors are generated
+    n_vertices_revisited: int = 0  # Number of paths to already-visited vertices is visited (i.e. search node ending at a vertex that has already been visited is pushed to Q at some point in the search)
     n_Q: int = 0
     n_S: int = 0
     n_S_pruned: int = 0

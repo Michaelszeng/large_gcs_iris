@@ -38,6 +38,14 @@ class SetSamples:
     def project_single(
         self, graph: Graph, node: SearchNode, sample: np.ndarray
     ) -> np.ndarray:
+        """
+        Takes a sample point and projects it into the feasible subspace of the path.
+        i.e. find the closest point such that the path to that point satisfies 
+        the vertex constraints and edge constraints of the path.
+        
+        This is done by basically solving the convex restriction with an
+        additional cost to minimize distance of the output point to the sample point.
+        """
         vertex_names = node.vertex_path
         active_edges = node.edge_path
         self.vertex_name
@@ -121,6 +129,8 @@ class SamplingDominationChecker(DominationChecker):
         self, candidate_node: SearchNode, alternate_nodes: list[SearchNode]
     ) -> bool:
         is_dominated = True
+        
+        # Generate samples if samples don't already exist (and cache them in self._set_samples)
         self._maybe_add_set_samples(candidate_node.vertex_name)
 
         samples = []
@@ -128,9 +138,11 @@ class SamplingDominationChecker(DominationChecker):
             # The last vertex in the trajectory will be the target,
             # The second last would be the candidate vertex
             samples.append(candidate_node.sol.trajectory[-2])
-
+        
+        # Compile cached samples
         samples += list(self._set_samples[candidate_node.vertex_name].samples)
 
+        # Project samples into the feasible subspace of the path
         for idx, sample in enumerate(
             self._set_samples[candidate_node.vertex_name].samples
         ):
@@ -150,13 +162,13 @@ class SamplingDominationChecker(DominationChecker):
 
             # Create a new vertex for the sample and add it to the graph
             sample_vertex_name = f"{candidate_node.vertex_name}_sample_{idx}"
-
             self._add_sample_to_graph(
                 sample=proj_sample,
                 sample_vertex_name=sample_vertex_name,
                 candidate_node=candidate_node,
             )
 
+            # Solve the convex restriction for the candidate path to that sample
             candidate_sol, suceeded = self._compute_candidate_sol(
                 candidate_node, sample_vertex_name
             )
@@ -164,7 +176,8 @@ class SamplingDominationChecker(DominationChecker):
                 self._graph.remove_vertex(sample_vertex_name)
                 logger.error(f"Candidate path to projected sample infeasible.")
                 continue
-
+            
+            # Check if the candidate path is dominated by any alternates to the sample
             any_single_domination = False
             for alt_i, alt_n in enumerate(alternate_nodes):
                 alt_sol = self._solve_conv_res_to_sample(alt_n, sample_vertex_name)
@@ -213,8 +226,10 @@ class SamplingDominationChecker(DominationChecker):
             else self._num_samples_per_vertex
         )
 
+        # Generate samples if samples don't already exist (and cache them in self._set_samples)
         if vertex_name not in self._set_samples:
             logger.debug(f"Adding samples for {vertex_name}")
+            # Generate sample wtihin convex set of vertex
             self._set_samples[vertex_name] = SetSamples.from_vertex(
                 vertex_name,
                 self._graph.vertices[vertex_name],

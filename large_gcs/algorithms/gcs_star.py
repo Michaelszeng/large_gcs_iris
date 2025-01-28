@@ -45,6 +45,7 @@ class GcsStar(SearchAlgorithm):
         override_wall_clock_time: Optional[float] = None,
         save_expansion_order: bool = False,
         allow_cycles: bool = True,
+        animate: bool = True,
     ):
         if isinstance(graph, IncrementalContactGraph):
             assert (
@@ -101,7 +102,7 @@ class GcsStar(SearchAlgorithm):
         if (
             isinstance(self._domination_checker, SamplingDominationChecker)
             and self._domination_checker._should_use_candidate_sol == True
-        ):
+        ) or vis_params.animate:
             # If the domination checker is going to use the candidate solution,
             # Then the trajectory needs to be processed by the post solve.
             self._override_skip_post_solve = False
@@ -136,7 +137,10 @@ class GcsStar(SearchAlgorithm):
         print("iterating")
 
         n: SearchNode = self.pop_node_from_Q()
-
+        
+        if self._vis_params.animate:
+            self._graph.update_animation(n.sol)
+        
         if self._save_expansion_order:
             self._alg_metrics.expansion_order.append(n.vertex_path)
 
@@ -199,6 +203,7 @@ class GcsStar(SearchAlgorithm):
             f"Exploring path (length {len(n_next.vertex_path)}) {n_next.vertex_path}"
         )
 
+        # Check domination condition
         # If going to target, do not need to check domination condition
         if (
             successor != self._target_name

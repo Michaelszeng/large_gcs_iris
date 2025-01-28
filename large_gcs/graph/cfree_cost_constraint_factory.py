@@ -69,7 +69,6 @@ def create_cfree_continuity_edge_constraint(base_dim: int, u: str, v: str, num_k
         v_part[:, :base_dim] = -np.eye(base_dim)  # select first knot point
 
     A = np.hstack((u_part, v_part))
-    print(f"A: {A}")
     b = np.zeros((base_dim,1))
     
     return LinearEqualityConstraint(A, b)
