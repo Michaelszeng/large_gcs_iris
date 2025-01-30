@@ -41,7 +41,7 @@ class SamplingContainmentDominationChecker(
         self,
         graph: Graph,
         num_samples_per_vertex: int,
-        should_use_candidate_sol: bool = False,
+        should_use_candidate_sol_as_sample: bool = False,
         containment_condition: int = -1,
         construct_path_from_nullspaces: bool = False,
     ):
@@ -49,12 +49,12 @@ class SamplingContainmentDominationChecker(
         self._target = graph.target_name
         self._containment_condition = containment_condition
         self._num_samples_per_vertex = num_samples_per_vertex
-        self._should_use_candidate_sol = should_use_candidate_sol
+        self._should_use_candidate_sol_as_sample_as_sample = should_use_candidate_sol_as_sample
         self._construct_path_from_nullspaces = construct_path_from_nullspaces
 
         if num_samples_per_vertex != 1:
             raise NotImplementedError()
-        if should_use_candidate_sol:
+        if should_use_candidate_sol_as_sample:
             raise NotImplementedError()
 
         # Keeps track of samples for each vertex(set) in the graph.
@@ -111,20 +111,25 @@ class SamplingContainmentDominationChecker(
 
         # Check whether the candidate is dominated by each of the alternate nodes for that sample
 
+        # NOTE: UNTESTED CHANGES HERE TO MAKE _solve_conv_res_to_sample TAKE SAMPLE DIRECTLY INSTEAD OF CREATING A SEPARATE SAMPLE VERTEX
+
         # Create a new vertex for the sample and add it to the graph
-        sample_vertex_name = f"{candidate_node.vertex_name}_sample_{0}"
+        # sample_vertex_name = f"{candidate_node.vertex_name}_sample_{0}"
+        # self._add_sample_to_graph(
+        #     sample=proj_sample,
+        #     sample_vertex_name=sample_vertex_name,
+        #     candidate_node=candidate_node,
+        # )
 
-        self._add_sample_to_graph(
-            sample=proj_sample,
-            sample_vertex_name=sample_vertex_name,
-            candidate_node=candidate_node,
-        )
-
+        # candidate_sol, suceeded = self._compute_candidate_sol(
+        #     candidate_node, sample_vertex_name
+        # )
         candidate_sol, suceeded = self._compute_candidate_sol(
-            candidate_node, sample_vertex_name
+            candidate_node, sample
         )
+        
         if not suceeded:
-            self._graph.remove_vertex(sample_vertex_name)
+            # self._graph.remove_vertex(sample_vertex_name)
             # This should never happen
             self._graph.set_target(self._target)
             return False
@@ -132,14 +137,14 @@ class SamplingContainmentDominationChecker(
         sample_is_dominated = np.full(len(alternate_nodes), False)
 
         for alt_i, alt_n in enumerate(alternate_nodes):
-            # logger.debug(f"Checking alternate path {alt_i} of {len(alternate_nodes)} for sample {idx}")
-            alt_sol = self._solve_conv_res_to_sample(alt_n, sample_vertex_name)
+            # alt_sol = self._solve_conv_res_to_sample(alt_n, sample_vertex_name)
+            alt_sol = self._solve_conv_res_to_sample(alt_n, sample)
             sample_is_dominated[alt_i] = self._is_single_dominated(
                 candidate_sol, alt_sol
             )
 
         # Clean up sample vertex
-        self._graph.remove_vertex(sample_vertex_name)
+        # self._graph.remove_vertex(sample_vertex_name)
         self._graph.set_target(self._target)
         return sample_is_dominated
 

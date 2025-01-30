@@ -87,7 +87,16 @@ class GcsStar(SearchAlgorithm):
         self._alg_metrics.update_method_call_structure(call_structure)
 
         start_node = SearchNode.from_source(self._graph.source_name)
+        start_node.sol = ShortestPathSolution(
+            is_success=True,
+            cost=0,
+            time=0,
+            vertex_path=[self._graph.source_name, self._graph.target_name],
+            trajectory=[self._graph.vertices[self._graph.source_name].convex_set.center, self._graph.vertices[self._graph.target_name].convex_set.center],
+        )
         self.push_node_on_Q(start_node)
+        self.add_node_to_S(start_node)
+        self.update_visited(start_node)  # Purely for logging
 
         # For continuing search from a checkpoint
         if load_checkpoint_log_dir is not None:
@@ -101,7 +110,7 @@ class GcsStar(SearchAlgorithm):
         self._override_skip_post_solve = None
         if (
             isinstance(self._domination_checker, SamplingDominationChecker)
-            and self._domination_checker._should_use_candidate_sol == True
+            and self._domination_checker._should_use_candidate_sol_as_sample_as_sample == True
         ) or vis_params.animate:
             # If the domination checker is going to use the candidate solution,
             # Then the trajectory needs to be processed by the post solve.
@@ -134,8 +143,6 @@ class GcsStar(SearchAlgorithm):
     @profile_method
     def _run_iteration(self) -> Optional[ShortestPathSolution]:
         """Runs one iteration of the search algorithm."""
-        print("iterating")
-
         n: SearchNode = self.pop_node_from_Q()
         
         if self._vis_params.animate:
@@ -158,7 +165,6 @@ class GcsStar(SearchAlgorithm):
         successors = self._graph.successors(n.vertex_name)
 
         self._save_metrics(n, len(successors))
-        # self.plot_search_node_and_graph(n, is_final_path=False)
 
         for v in successors:
             if not self._allow_cycles and v in n.vertex_path:
@@ -180,7 +186,20 @@ class GcsStar(SearchAlgorithm):
     def _explore_successor(
         self, n: SearchNode, successor: str
     ) -> Optional[ShortestPathSolution]:
+        """
+        Decide that a candidate path is either dominated or not (in which case, 
+        add it to Q and S).
+        """
+        
+        # Create a path from s to successor
+        n_next = SearchNode.from_parent(child_vertex_name=successor, parent=n)
 
+        # We solve for the optimal path from s to successor to t for a few reasons
+        # here. First, we can check if the path is feasible at all. Second, 
+        # if it is feasible, we can use the resulting cost \tilde{f}(v) to order
+        # this path in the queue. Third, if SamplingDominationChecker is used and
+        # _should_use_candidate_sol_as_sample_as_sample is true, the optimal candidate
+        # solution is used as a sample for domination checking.
         sol: ShortestPathSolution = self._cost_estimator.estimate_cost(
             self._graph,
             successor,
@@ -188,15 +207,14 @@ class GcsStar(SearchAlgorithm):
             heuristic_inflation_factor=self._heuristic_inflation_factor,
             override_skip_post_solve=self._override_skip_post_solve,
         )
-
+        
+        # Check feasibility of path before checking domination condition
         if not sol.is_success:
             logger.debug(f"Path not actually feasible")
-            # Path invalid, do nothing, don't add to Q
-            return
+            return  # Path invalid, do nothing, don't add to Q
         else:
             logger.debug(f"Path is feasible")
 
-        n_next = SearchNode.from_parent(child_vertex_name=successor, parent=n)
         n_next.sol = sol
         n_next.priority = sol.cost
         logger.debug(
@@ -204,8 +222,7 @@ class GcsStar(SearchAlgorithm):
         )
 
         # Check domination condition
-        # If going to target, do not need to check domination condition
-        if (
+        if (  # If going to target, do not need to check domination condition
             successor != self._target_name
             # and n.vertex_name != self._graph.source_name
             and self._is_dominated(n_next)
@@ -222,7 +239,7 @@ class GcsStar(SearchAlgorithm):
             self.remove_node_from_S(n_next.vertex_name)
         self.add_node_to_S(n_next)
         self.push_node_on_Q(n_next)
-        self.update_visited(n_next)
+        self.update_visited(n_next)  # Purely for logging
 
         # Early Termination
         if self._terminate_early and successor == self._target_name:
@@ -234,10 +251,10 @@ class GcsStar(SearchAlgorithm):
     def _is_dominated(self, n: SearchNode) -> bool:
         """Checks if the given node is dominated by any other node in the
         visited set."""
-
         # Check for trivial domination case
         if n.vertex_name not in self._S:
             return False
+
         return self._domination_checker.is_dominated(n, self._S[n.vertex_name])
 
     def load_checkpoint(self, checkpoint_log_dir, override_wall_clock_time=None):

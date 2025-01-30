@@ -1,5 +1,5 @@
 _target_: large_gcs.domination_checkers.sampling_containment_domination_checker.ReachesCheaperSamplingContainment
 
 num_samples_per_vertex: 1
-should_use_candidate_sol: false
+should_use_candidate_sol_as_sample: false
 containment_condition: -1

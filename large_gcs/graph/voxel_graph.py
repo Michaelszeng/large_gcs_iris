@@ -20,7 +20,7 @@ from tqdm import tqdm
 from large_gcs.geometry.convex_set import ConvexSet
 from large_gcs.geometry.point import Point
 from large_gcs.geometry.voxel import Voxel
-
+from large_gcs.geometry.voxel_collision_checker import VoxelCollisionChecker, VoxelCollisionCheckerConvexObstacles
 from large_gcs.graph.cfree_cost_constraint_factory import (
     create_cfree_l2norm_vertex_cost,
     create_cfree_constant_edge_cost,
@@ -89,7 +89,6 @@ def generate_all_offsets_no_diagonal(dim):
 class VoxelGraph(Graph):
     def __init__(
         self,
-        obstacles: List[ConvexSet],
         s: np.ndarray,
         t: np.ndarray,
         workspace: np.ndarray = None,
@@ -97,11 +96,11 @@ class VoxelGraph(Graph):
         num_knot_points_per_voxel: int = 2,
         should_add_gcs: bool = True,
         const_edge_cost: float = 1e-4,
+        voxel_collision_checker: VoxelCollisionChecker = None,
     ):
         Graph.__init__(self, workspace=workspace)
         assert self.workspace is not None, "Must specify workspace"
         
-        self.obstacles = obstacles
         self.s = s
         self.t = t
         self.workspace = workspace
@@ -109,6 +108,7 @@ class VoxelGraph(Graph):
         self.num_knot_points = num_knot_points_per_voxel
         self._should_add_gcs = should_add_gcs
         self._const_edge_cost = const_edge_cost
+        self.voxel_collision_checker = voxel_collision_checker
         
         self.base_dim = np.shape(s)[0]  # dimension of space
         
@@ -134,9 +134,7 @@ class VoxelGraph(Graph):
         
     def generate_successors(self, vertex_name: str) -> None:
         """Generates neighbors and adds them to the graph, also adds edges from
-        vertex to neighbors."""
-        print("generating successors")
-        
+        vertex to neighbors."""       
         neighbors = []
         
         if vertex_name == self.source_name:
@@ -173,7 +171,7 @@ class VoxelGraph(Graph):
                 )
                 
                 # Skip voxel if it is in collision
-                if not self._is_voxel_collision_free(neighbor_voxel):
+                if not self.voxel_collision_checker.check_voxel_collision_free(neighbor_voxel):
                     continue
                 
                 neighbors.append((
@@ -254,13 +252,6 @@ class VoxelGraph(Graph):
                     ),
                     should_add_to_gcs=self._should_add_gcs,
                 )
-            
-    def _is_voxel_collision_free(self, voxel: Voxel) -> bool:
-        """Only handles Polyhedron obstacles for now."""
-        for obstacle in self.obstacles:
-            if not obstacle.set.Intersection(voxel.set_in_space.MakeHPolyhedron()).IsEmpty():
-                return False
-        return True
     
     def _does_vertex_have_possible_edge_to_target(self, vertex_name: str) -> bool:
         """Determine if we can add an edge to the target vertex."""
@@ -326,7 +317,9 @@ class VoxelGraph(Graph):
         """
         if self.base_dim not in [2, 3]:
             raise ValueError("Can only plot 2D or 3D voxel graphs")
-            
+        if not isinstance(self.voxel_collision_checker, VoxelCollisionCheckerConvexObstacles):
+            raise ValueError("Can only plot voxel graphs with convex obstacles")
+        
         # If this is the first time plotting, create a new figure and plot the 
         # source, target, and obstacles (which are static)
         fig = None
@@ -358,7 +351,7 @@ class VoxelGraph(Graph):
                 )
         
             # Plot obstacles
-            for obstacle in self.obstacles:
+            for obstacle in self.voxel_collision_checker.obstacles:
                 if hasattr(obstacle, 'vertices'):
                     obstacle_vertices = obstacle.vertices
                     if self.base_dim == 2:
@@ -398,7 +391,7 @@ class VoxelGraph(Graph):
                 self.path_line_final_segment, = ax.plot(
                     [], [], 'ro-',  # Red color for final segment
                     linewidth=2, markersize=5,
-                    label='Final Segment',
+                    label='Shortcut Edge',
                     zorder=11  # Higher zorder to draw on top
                 )
             else:
@@ -410,7 +403,7 @@ class VoxelGraph(Graph):
                 self.path_line_final_segment, = ax.plot3D(
                     [], [], [], 'ro-',  # Red color for final segment
                     linewidth=2, markersize=5,
-                    label='Final Segment'
+                    label='Shortcut Edge'
                 )
                 
             # Initialize empty collections for voxels
@@ -508,7 +501,24 @@ class VoxelGraph(Graph):
                         )
                         self.animation_ax.add_patch(rect)
                         self.voxel_patches.append(rect)
-                        
+                
+                # Add vertex path text
+                # Remove old text annotation if it exists
+                if hasattr(self, 'path_text') and self.path_text in self.animation_ax.texts:
+                    self.path_text.remove()
+                
+                # Format the vertex path for display
+                path_str = ' → '.join(sol.vertex_path[:-1])
+                self.path_text = self.animation_ax.text(
+                    0.05, 0.95,  # Position in axes coordinates (5% from left, 95% from bottom)
+                    f'Path: {path_str}',
+                    transform=self.animation_ax.transAxes,  # Use axes coordinates
+                    verticalalignment='top',
+                    bbox=dict(facecolor='white', alpha=0.7, edgecolor='none'),
+                    fontsize=8,
+                    wrap=True
+                )
+                self.voxel_patches.append(self.path_text)  # Add to patches so it gets cleaned up
             elif self.base_dim == 3:
                 # Set trajectory points
                 # Main path (all but last segment)

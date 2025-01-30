@@ -74,23 +74,21 @@ def create_cfree_continuity_edge_constraint(base_dim: int, u: str, v: str, num_k
     return LinearEqualityConstraint(A, b)
 
 
-def vertex_constraint_last_pos_equality_cfree(
-    sample: np.ndarray,
-) -> LinearEqualityConstraint:
+def vertex_constraint_last_pos_equality_cfree(base_dim: int, num_knot_points: int, u: str, sample: np.ndarray) -> LinearEqualityConstraint:
     """
-    Creates a constraint to ensure the last position of a vertex matches a sampled point.
-
-    Assumes:
-        - The convex set has 2 knot points.
-        - The last position is the second knot point (i.e., the second half of the variables).
+    Creates a constraint to ensure the last knot point of a vertex matches a sampled point.
 
     A = [0, I]
     b = sample_last_position
     x = [vertex_pos0, vertex_pos1]
     """
-    base_dim = sample.shape[0] // 2
-    A = np.hstack((np.zeros((base_dim, base_dim)), np.eye(base_dim)))
-    b = sample[base_dim:]
+    if u == "source":
+        A = np.eye(base_dim)  # source is a point and so has only base_dim variables
+    else:
+        A = np.zeros((base_dim, num_knot_points * base_dim))
+        A[:, -base_dim:] = np.eye(base_dim)  # select last knot point
+    
+    b = sample
     return LinearEqualityConstraint(A, b)
 
 
@@ -98,13 +96,19 @@ def shortcut_edge_l2norm_cost_factory(
     u: str,
     base_dim: int,
     num_knot_points: int,
-    add_const_cost: bool = False,
     heuristic_inflation_factor: float = 1,
+    add_const_cost: bool = False,
+    const_cost: float = 1e-1,
 ) -> List[Cost]:
     """
     Cost function defining the heuristic. Specifically, the heuristic is the 
-    L2 distance from the last knot point of the successor set u to the target, 
+    L2 distance from the last knot point of the successor set u to some point,
     potentially inflated by a scaling factor.
+    
+    This is used in two places:
+    1. L2 norm heuristic to the target
+    2. Sampling domination checker: Adding a cost for the final edge to a sample 
+    point when evaluating a path to the sample point
     
     Linear cost of the form: a'x + b, where a is a vector of coefficients and b is a constant.
     
@@ -142,7 +146,7 @@ def shortcut_edge_l2norm_cost_factory(
         # Constant cost for the edge
         a = np.zeros((total_dim, 1))
         # We add 2 because if a shortcut is used it minimally replaces 2 edges
-        constant_cost = 2 * heuristic_inflation_factor
+        constant_cost = 2 * const_cost
         costs.append(LinearCost(a, constant_cost))
     
     return costs

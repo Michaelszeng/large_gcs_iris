@@ -18,7 +18,7 @@ cost_estimator:
 
 domination_checker:
   num_samples_per_vertex: 1
-  should_use_candidate_sol: false
+  should_use_candidate_sol_as_sample: false
 
 save_visualization: true
 save_solution: true

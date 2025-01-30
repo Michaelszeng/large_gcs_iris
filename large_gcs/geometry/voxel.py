@@ -1,9 +1,13 @@
+import logging
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import numpy as np
 from pydrake.all import Hyperrectangle as DrakeHyperrectangle
+from pydrake.all import RandomGenerator
 
 from large_gcs.geometry.convex_set import ConvexSet
+
+logger = logging.getLogger(__name__)
 
 
 class Voxel(ConvexSet):
@@ -30,6 +34,28 @@ class Voxel(ConvexSet):
         
         self._voxel_size = voxel_size
         self._num_knot_points = num_knot_points
+        
+    def get_samples(self, n_samples=100) -> np.ndarray:
+        """
+        This needs to be overridden in a voxel graph because the voxel's 
+        _set representation has dimension `self.dim * self._num_knot_points`
+        while we want the samples to have dimension `self.dim`. Instead of
+        sampling from _set, we sample from _set_in_space.
+        """
+        samples = []
+        generator = RandomGenerator()
+        try:
+            samples.append(self.set_in_space.UniformSample(generator))
+            logger.debug(f"Sampled 1 points from convex set")
+            for i in range(n_samples - 1):
+                # Hyperrectangle doesn't need previous sample or mixing steps
+                samples.append(self.set_in_space.UniformSample(generator))
+                logger.debug(f"Sampled {i+2} points from convex set")
+        except (RuntimeError, ValueError) as e:
+            chebyshev_center = self.set.ChebyshevCenter()
+            logger.warn("Failed to sample convex set" f"\n{e}")
+            return np.array([chebyshev_center])
+        return np.array(samples)
         
     def _plot(self, ax=None, **kwargs):
         if ax is None:

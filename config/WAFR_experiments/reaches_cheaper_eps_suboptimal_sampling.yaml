@@ -23,7 +23,7 @@ save_to_wandb: true
 
 domination_checker:
   num_samples_per_vertex: 1
-  should_use_candidate_sol: false
+  should_use_candidate_sol_as_sample: false
 
 hydra:
   mode: MULTIRUN

@@ -19,6 +19,7 @@ from large_gcs.algorithms.search_algorithm import AlgVisParams, SearchAlgorithm
 from large_gcs.cost_estimators.cost_estimator import CostEstimator
 from large_gcs.domination_checkers.domination_checker import DominationChecker
 from large_gcs.graph.voxel_graph import VoxelGraph
+from large_gcs.geometry.voxel_collision_checker import VoxelCollisionCheckerConvexObstacles
 from large_gcs.graph.graph import ShortestPathSolution
 from large_gcs.graph.incremental_contact_graph import IncrementalContactGraph
 from large_gcs.graph_generators.contact_graph_generator import (
@@ -46,32 +47,33 @@ def main(cfg: OmegaConf) -> None:
     logger.info(cfg)
     
     # 2D Test
+    obstacles = [Polyhedron.from_vertices([[0.9,0.1],[0.1,0.9],[0.9,0.9]])]
     g = VoxelGraph(
-        [Polyhedron.from_vertices([[0.9,0.1],[0.1,0.9],[0.9,0.9]])],  # obstacles
-        np.array([0, 0]),  # source
-        np.array([2, 2]),  # target
-        np.array([[-4, 4],    # workspace x-lim
-                  [-4, 4]]),  # workspace y-lim
+        s = np.array([0, 0]),
+        t = np.array([2, 2]),
+        workspace = np.array([[-4, 4],    # workspace x-lim
+                              [-4, 4]]),  # workspace y-lim
         default_voxel_size = 1,
         should_add_gcs = True,
         const_edge_cost=cfg.const_edge_cost,
+        voxel_collision_checker=VoxelCollisionCheckerConvexObstacles(obstacles),
     )
     
     # 3D Test
     # g = VoxelGraph(
     #     [Polyhedron.from_vertices([[0.9,0.1,-1],[0.1,0.9,-1],[0.9,0.9,-1],[0.9,0.1,1],[0.1,0.9,1],[0.9,0.9,1]])],  # obstacles
-    #     np.array([0, 0, 0]),  # source
-    #     np.array([2, 2, 2]),  # target
-    #     np.array([[-4,  4],    # workspace x-lim
-    #               [-4,  4],    # workspace y-lim
-    #               [-4,  4]]),  # workspace z-lim
+    #     s = np.array([0, 0, 0]),
+    #     t = np.array([2, 2, 2]),
+    #     workspace = np.array([[-4,  4],    # workspace x-lim
+    #                           [-4,  4],    # workspace y-lim
+    #                           [-4,  4]]),  # workspace z-lim
     #     default_voxel_size = 1,
     #     should_add_gcs = True,
     #     const_edge_cost=cfg.const_edge_cost,
     # )
     
     cost_estimator: CostEstimator = instantiate(
-        cfg.cost_estimator, graph=g, add_const_cost=cfg.should_add_const_edge_cost
+        cfg.cost_estimator, graph=g, add_const_cost=cfg.should_add_const_edge_cost, const_cost=cfg.const_edge_cost
     )
     domination_checker: DominationChecker = instantiate(
         cfg.domination_checker, graph=g

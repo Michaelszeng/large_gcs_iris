@@ -16,6 +16,7 @@ class ShortcutEdgeCfreeCE(CostEstimator):
         graph: Graph,
         shortcut_edge_cost_factory=None,
         add_const_cost: bool = False,
+        const_cost: float = 1e-1,
     ):
         print(shortcut_edge_cost_factory)
         print("================================================")
@@ -35,7 +36,8 @@ class ShortcutEdgeCfreeCE(CostEstimator):
         self._graph = graph
         self._shortcut_edge_cost_factory = shortcut_edge_cost_factory
         self._add_const_cost = add_const_cost
-
+        self._const_cost = const_cost
+        
     def estimate_cost(
         self,
         graph: Graph,
@@ -70,6 +72,7 @@ class ShortcutEdgeCfreeCE(CostEstimator):
                     num_knot_points=self._graph.num_knot_points,
                     heuristic_inflation_factor=heuristic_inflation_factor,
                     add_const_cost=self._add_const_cost,
+                    const_cost=self._const_cost
                 )               
 
             # Add shortcut edge to graph
@@ -80,7 +83,7 @@ class ShortcutEdgeCfreeCE(CostEstimator):
                 costs=shortcut_edge_costs,
             )
             graph.add_edge(edge_to_target)
-            conv_res_active_edges = node.   edge_path + [
+            conv_res_active_edges = node.edge_path + [
                 edge_to_successor,
                 edge_to_target.key,
             ]
@@ -96,6 +99,7 @@ class ShortcutEdgeCfreeCE(CostEstimator):
         sol = graph.solve_convex_restriction(
             conv_res_active_edges, skip_post_solve=skip_post_solve
         )
+        print(f"{sol.vertex_path} sol.cost: {sol.cost}")
 
         self._alg_metrics.update_after_gcs_solve(sol.time)
 
