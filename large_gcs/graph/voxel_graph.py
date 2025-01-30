@@ -385,7 +385,7 @@ class VoxelGraph(Graph):
             elif isinstance(self.voxel_collision_checker, VoxelSceneGraphCollisionChecker):
                 # Rejection sample and plot points where collisions are sampled
                 # Sample points in workspace
-                num_samples = 500
+                num_samples = 10000
                 
                 # Sample points uniformly from workspace
                 samples = np.random.uniform(
@@ -396,17 +396,17 @@ class VoxelGraph(Graph):
                 
                 # Check collisions for all samples
                 collision_free = self.voxel_collision_checker.check_configs_collision_free(samples)
-                collision_points = samples[~collision_free]
+                collision_points = samples[~np.array(collision_free, dtype=bool)]
+                # print(f"collision_points: {collision_points}")
                 
                 # Plot the points
                 if self.base_dim == 2:
-                    ax.scatter(
+                    scatter = ax.scatter(
                         collision_points[:, 0], 
                         collision_points[:, 1],
                         color='black', 
-                        alpha=0.3, 
                         s=10, 
-                        label='In Collision'
+                        label='In Collision',
                     )
                 elif self.base_dim == 3:
                     ax.scatter(
@@ -414,7 +414,6 @@ class VoxelGraph(Graph):
                         collision_points[:, 1], 
                         collision_points[:, 2],
                         color='black', 
-                        alpha=0.3, 
                         s=10, 
                         label='In Collision'
                     )

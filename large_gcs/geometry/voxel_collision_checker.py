@@ -48,6 +48,8 @@ class VoxelSceneGraphCollisionChecker(VoxelCollisionChecker):
         
     def check_configs_collision_free(self, configs: np.ndarray) -> bool:
         """
-        Check if a list of configurations are collision free.
+        Check if an array of configurations are collision free.
+        
+        A simple wrapper around Drake's SceneGraphCollisionChecker.CheckConfigsCollisionFree method.
         """
-        return np.all(self.collision_checker.CheckConfigsCollisionFree(configs))
+        return self.collision_checker.CheckConfigsCollisionFree(configs)

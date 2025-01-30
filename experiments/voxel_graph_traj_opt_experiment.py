@@ -8,6 +8,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+import time
 
 from pydrake.all import (
     StartMeshcat,
@@ -66,9 +67,11 @@ diagram = robot_diagram_builder.Build()
 
 # Roll forward sim a bit to show the visualization
 simulator = Simulator(diagram)
+meshcat.StartRecording()
 simulator.AdvanceTo(0.001)
 
-plant_context = plant.CreateDefaultContext()
+simulator_context = simulator.get_mutable_context()
+plant_context = plant.GetMyMutableContextFromRoot(simulator_context)
 
 num_robot_positions = plant.num_positions()
 
@@ -99,26 +102,13 @@ def main(cfg: OmegaConf) -> None:
     # 2D Test 
     g = VoxelGraph(
         s = np.array([0, 0]),
-        t = np.array([2, 2]),
+        t = np.array([-1, 1.7]),
         workspace = workspace,
         default_voxel_size = 0.25,
         should_add_gcs = True,
         const_edge_cost=cfg.const_edge_cost,
         voxel_collision_checker=VoxelSceneGraphCollisionChecker(collision_checker_params),
     )
-    
-    # 3D Test
-    # g = VoxelGraph(
-    #     s = np.array([0, 0, 0]),
-    #     t = np.array([2, 2, 2]),
-    #     workspace = np.array([[-4,  4],    # workspace x-lim
-    #                           [-4,  4],    # workspace y-lim
-    #                           [-4,  4]]),  # workspace z-lim
-    #     default_voxel_size = 1,
-    #     should_add_gcs = True,
-    #     const_edge_cost=cfg.const_edge_cost,
-    #     voxel_collision_checker=VoxelSceneGraphCollisionChecker(collision_checker_params),
-    # )
     
     cost_estimator: CostEstimator = instantiate(
         cfg.cost_estimator, graph=g, add_const_cost=cfg.should_add_const_edge_cost, const_cost=cfg.const_edge_cost
@@ -147,6 +137,47 @@ def main(cfg: OmegaConf) -> None:
         )
         metrics_path = Path(full_log_dir) / f"{output_base}_metrics.json"
         alg.save_alg_metrics_to_file(metrics_path)
+        
+    # Animate in meshcat
+    # Get last knot point from each trajectory point
+    last_knot_points = []
+    for traj_point in sol.trajectory:
+        # Reshape into knot points and take the last one
+        num_knot_points = len(traj_point) // num_robot_positions
+        knot_points = traj_point.reshape(num_knot_points, num_robot_positions)
+        last_knot_points.append(knot_points[-1])
+    
+    # Calculate total path length to normalize speed
+    path_length = 0
+    for i in range(len(sol.vertex_path)-1):
+        diff = last_knot_points[i+1] - last_knot_points[i]
+        path_length += np.linalg.norm(diff)
+    
+    # Set desired animation duration in seconds
+    duration = 2.0
+    steps_per_segment = 100
+    
+    for i in range(len(sol.vertex_path)-1):
+        start_pos = last_knot_points[i]
+        end_pos = last_knot_points[i+1]
+        
+        # Calculate segment length for speed normalization
+        segment_length = np.linalg.norm(end_pos - start_pos)
+        
+        # Interpolate between points
+        for t in range(steps_per_segment):
+            alpha = t / steps_per_segment
+            current_pos = start_pos + alpha * (end_pos - start_pos)
+            
+            # Set the position in the plant
+            plant.SetPositions(plant_context, current_pos)
+            simulator.AdvanceTo(simulator_context.get_time() + 0.001)
+            
+            # Calculate sleep duration based on segment length relative to total path
+            sleep_duration = (duration * segment_length / path_length) / steps_per_segment
+            time.sleep(sleep_duration)
+            
+    meshcat.PublishRecording()
     
     return
 
