@@ -45,9 +45,9 @@ def profile_method(method):
         #     logger.warning(
         #         f"Method {method.__name__} took {elapsed_time:.2f} seconds to run."
         #     )
-        logger.info(
-            f"Method {method.__name__} took {elapsed_time:.4f} seconds to run."
-        )
+        # logger.info(
+        #     f"Method {method.__name__} took {elapsed_time:.4f} seconds to run."
+        # )
         # Update the AlgMetrics with the elapsed time for the method
         self._alg_metrics.method_times[method.__name__] += elapsed_time
         self._alg_metrics.method_counts[method.__name__] += 1

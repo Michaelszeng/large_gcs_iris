@@ -1,6 +1,7 @@
 import logging
 from typing import Tuple
 
+import numpy as np
 from numpy import ndarray
 
 from large_gcs.algorithms.search_algorithm import SearchNode
@@ -59,7 +60,7 @@ class ReachesNewLastPosSampling(SamplingLastPos):
         return alt_sol.is_success
 
     def _compute_candidate_sol(
-        self, candidate_node: SearchNode, sample_vertex_name: str
+        self, candidate_node: SearchNode, sample_vertex_name: str, sample: np.ndarray
     ) -> Tuple[ShortestPathSolution | None, bool]:
         # For reaches new, we don't need to compute the candidate solution,
         # We assume that the projection step led to a feasible solution for the candidate
@@ -80,15 +81,15 @@ class ReachesCheaperLastPosSampling(SamplingLastPos):
         return alt_sol.is_success and alt_sol.cost <= candidate_sol.cost
 
     def _compute_candidate_sol(
-        self, candidate_node: SearchNode, sample_vertex_name: str
+        self, candidate_node: SearchNode, sample_vertex_name: str, sample: np.ndarray
     ) -> Tuple[ShortestPathSolution | None, bool]:
         candidate_sol = self._solve_conv_res_to_sample(
-            candidate_node, sample_vertex_name
+            candidate_node, sample_vertex_name, sample
         )
         if not candidate_sol.is_success:
             logger.error(
                 f"Candidate path was not feasible to reach {sample_vertex_name}"
-                f"\nvertex_path: {candidate_node.vertex_path}"
-                f"\n Skipping to next sample"
+                f"\n\t\t\tvertex_path: {candidate_node.vertex_path}"
+                f"\n\t\t\tSkipping to next sample"
             )
         return candidate_sol, candidate_sol.is_success

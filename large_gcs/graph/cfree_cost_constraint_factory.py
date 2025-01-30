@@ -31,8 +31,8 @@ def create_cfree_constant_edge_cost(base_dim: int, u: str, v: str, num_knot_poin
     Linear cost of the form: a'x + b, where a is a vector of coefficients and b is a constant.
     """
     # Depending on whether vertex is source or target, we need to adjust the dimension of the cost vector
-    if u == "source" or v == "target":
-        if u == "source" and v == "target":
+    if "source" in u or v == "target":
+        if "source" in u and v == "target":
             total_dim = base_dim + base_dim  # source and target only have one knot point
         else:
             total_dim = num_knot_points * base_dim + base_dim  
@@ -56,7 +56,7 @@ def create_cfree_continuity_edge_constraint(base_dim: int, u: str, v: str, num_k
     b = 0
     x = [u_x0, ..., u_x{n-1}, v_x0, ..., v_x{n-1}]
     """
-    if u == "source":
+    if "source" in u:
         u_part = np.eye(base_dim)  # source is a point and so has only base_dim variables
     else:
         u_part = np.zeros((base_dim, num_knot_points * base_dim))
@@ -80,16 +80,21 @@ def vertex_constraint_last_pos_equality_cfree(base_dim: int, num_knot_points: in
 
     A = [0, I]
     b = sample_last_position
-    x = [vertex_pos0, vertex_pos1]
+    x = [x0, ..., x{n-1}]
     """
-    if u == "source":
+    if "source" in u:
         A = np.eye(base_dim)  # source is a point and so has only base_dim variables
     else:
         A = np.zeros((base_dim, num_knot_points * base_dim))
         A[:, -base_dim:] = np.eye(base_dim)  # select last knot point
     
-    b = sample
-    return LinearEqualityConstraint(A, b)
+    # b = sample
+    # return LinearEqualityConstraint(A, b)
+    
+    tol = 1e-1
+    lb = sample - tol
+    ub = sample + tol
+    return LinearConstraint(A, lb, ub)
 
 
 def shortcut_edge_l2norm_cost_factory(

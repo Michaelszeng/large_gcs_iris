@@ -45,3 +45,9 @@ class VoxelSceneGraphCollisionChecker(VoxelCollisionChecker):
             return True
         else:
             return False
+        
+    def check_configs_collision_free(self, configs: np.ndarray) -> bool:
+        """
+        Check if a list of configurations are collision free.
+        """
+        return np.all(self.collision_checker.CheckConfigsCollisionFree(configs))

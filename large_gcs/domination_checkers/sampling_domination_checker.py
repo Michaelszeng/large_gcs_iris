@@ -175,38 +175,41 @@ class SamplingDominationChecker(DominationChecker):
             if proj_sample is None:
                 # If the projection failed assume that the candidate is not feasible, and reject the path
                 return True
-
-            # # Create a new point vertex for the sample and add it to the graph. 
-            # sample_vertex_name = f"{candidate_node.vertex_name}_sample_{idx}"
-            # self._add_sample_to_graph(
-            #     sample=proj_sample,
-            #     sample_vertex_name=sample_vertex_name,
-            #     candidate_node=candidate_node,
-            # )
+            
+            # Add a new vertex to replace the last vertex of the path.
+            # This is necessary because costs and constraints are added by vertex name.
+            # We need to apply a unique constraint on last vertex to ensure
+            # equality of the last knot point with the sample. If the last 
+            # vertex is visited multiple times throughout the path, the constraint 
+            # will be applied multiple times and the solver will fail. Therefore, 
+            # we add a new vertex with a new name.
+            sample_vertex_name = f"{candidate_node.vertex_name}_sample"
+            self._graph.add_vertex(
+                vertex=Vertex(
+                    convex_set=self._graph.vertices[candidate_node.vertex_name].convex_set,
+                    constraints=[vertex_constraint_last_pos_equality_cfree(self._graph.base_dim, self._graph.num_knot_points, sample_vertex_name, sample)],
+                ),
+                name=sample_vertex_name,
+            )
 
             # Solve the convex restriction for the candidate path to that sample.
             # _compute_candidate_sol is just a wrapper around _solve_conv_res_to_sample
             # except for REACHESNEW domination checks the candidate solution
             # isn't needed, so this wrapper just does nothing. 
-            # candidate_sol, suceeded = self._compute_candidate_sol(
-            #     candidate_node, sample_vertex_name
-            # )
             candidate_sol, suceeded = self._compute_candidate_sol(
-                candidate_node, sample
+                candidate_node, sample_vertex_name, sample
             )
-
+            
             if not suceeded:
-                # self._graph.remove_vertex(sample_vertex_name)
-                logger.error(f"Candidate path to projected sample infeasible.")
+                self._graph.remove_vertex(sample_vertex_name)
                 continue
             
             # Check if the candidate path is dominated by any alternates to the sample
             any_single_domination = False
             for alt_i, alt_n in enumerate(alternate_nodes):
-                # alt_sol = self._solve_conv_res_to_sample(alt_n, sample_vertex_name)
-                alt_sol = self._solve_conv_res_to_sample(alt_n, sample)
+                alt_sol = self._solve_conv_res_to_sample(alt_n, sample_vertex_name, sample)
                 if self._is_single_dominated(candidate_sol, alt_sol):
-                    # self._graph.remove_vertex(sample_vertex_name)
+                    self._graph.remove_vertex(sample_vertex_name)
                     any_single_domination = True
                     break
 
@@ -218,12 +221,12 @@ class SamplingDominationChecker(DominationChecker):
 
             # If, for the current sample, the candidate path is not dominated by any alternate path, do not need to check more samples. Return non-dominated.
             is_dominated = False
-            # if sample_vertex_name in self._graph.vertices:
-            #     self._graph.remove_vertex(sample_vertex_name)
+            if sample_vertex_name in self._graph.vertices:
+                self._graph.remove_vertex(sample_vertex_name)
             logger.debug(f"Sample {idx} reached new/cheaper by candidate path")
             break  # and return non-dominated
 
-        # self._graph.set_target(self._target)
+        self._graph.set_target(self._target)
         return is_dominated
 
     def _is_single_dominated(
@@ -232,7 +235,7 @@ class SamplingDominationChecker(DominationChecker):
         raise NotImplementedError
 
     def _compute_candidate_sol(
-        self, candidate_node: SearchNode, sample: np.ndarray
+        self, candidate_node: SearchNode, sample_name: str, sample: np.ndarray
     ) -> Optional[ShortestPathSolution]:
         raise NotImplementedError
 
@@ -256,10 +259,10 @@ class SamplingDominationChecker(DominationChecker):
             )
 
     def _solve_conv_res_to_sample(
-        self, node: SearchNode, sample: np.ndarray
+        self, node: SearchNode, sample_vertex_name: str, sample: np.ndarray
     ) -> ShortestPathSolution:
         
-        # If the path is only a single vertex, return a trivial solution
+        # Edge case: If the path is only a single vertex, return a trivial solution
         if len(node.edge_path) == 0:
             return ShortestPathSolution(
                 is_success=True,
@@ -269,56 +272,22 @@ class SamplingDominationChecker(DominationChecker):
                 trajectory=[self._graph.vertices[node.vertex_name].convex_set.center, sample],
             )
             
-        # Add constraint to the last vertex to ensure the last position matches the sample
-        self._graph.vertices[node.vertex_name].constraints.append(vertex_constraint_last_pos_equality_cfree(self._graph.base_dim, self._graph.num_knot_points, node.vertex_name, sample))
-        
-        # Set the target to the last vertex
-        # self._graph.set_target(node.vertex_name)
-        
-        # Solve and Cleanup
-        # sol = self._graph.solve_convex_restriction(node.edge_path, skip_post_solve=True)
-        sol = self._graph.solve_convex_restriction(node.edge_path, skip_post_solve=False)
-        self._alg_metrics.update_after_gcs_solve(sol.time)
-        self._graph.vertices[node.vertex_name].constraints.pop()  # remove the sample-equality constraint
-        
-        # Don't worry about resetting the graph target; this is done later by the caller (is_dominated)
-        
-        return sol
-        
-        
-        
-            
-        # If the path is only a single vertex, return a trivial solution
-        if len(node.edge_path) == 0:
-            return ShortestPathSolution(
-                is_success=True,
-                cost=0,
-                time=0,
-                vertex_path=[node.vertex_name, sample_vertex_name],
-                trajectory=[self._graph.vertices[node.vertex_name].convex_set.center, self._graph.vertices[sample_vertex_name].convex_set.center],
-            )    
-        
-        # Add edge between the sample and the second last vertex in the path.
-        # This effectively replaces the last edge in the path with the 
-        # new edge to the sample.
-        # Use the same edge costs and constraints as the existing edge to the last vertex
+        # Add edge between the sample and the second last vertex in the path
         e = self._graph.edges[node.edge_path[-1]]
         edge_to_sample = Edge(
             u=e.u,
             v=sample_vertex_name,
-            # costs=e.costs,
-            costs = shortcut_edge_l2norm_cost_factory(e.u, self._graph.base_dim, self._graph.num_knot_points, add_const_cost=False),
-            constraints=[]  # DO NOT ENFORCE CONTINUITY CONSTRAINT HERE because the sample is a point; 
+            costs=e.costs,
+            constraints=e.constraints,
         )
         self._graph.add_edge(edge_to_sample)
         self._graph.set_target(sample_vertex_name)
         active_edges = node.edge_path.copy()
         active_edges[-1] = edge_to_sample.key
 
-        # sol = self._graph.solve_convex_restriction(active_edges, skip_post_solve=True)
-        sol = self._graph.solve_convex_restriction(active_edges, skip_post_solve=False)
+        sol = self._graph.solve_convex_restriction(active_edges, skip_post_solve=True)
         self._alg_metrics.update_after_gcs_solve(sol.time)
-        # Clean up edge, but leave the sample vertex
+        # Clean up edge, but leave the sample vertex (which may be used by other alternate paths)
         self._graph.remove_edge(edge_to_sample.key)
         return sol
 

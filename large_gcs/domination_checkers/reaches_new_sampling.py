@@ -25,7 +25,7 @@ class ReachesNewSampling(SamplingDominationChecker):
         return alt_sol.is_success
 
     def _compute_candidate_sol(
-        self, candidate_node: SearchNode, sample: np.ndarray
+        self, candidate_node: SearchNode, sample_name: str, sample: np.ndarray
     ) -> Tuple[ShortestPathSolution | None, bool]:
         # For reaches new, we don't need to compute the candidate solution,
         # We assume that the projection step led to a feasible solution for the candidate

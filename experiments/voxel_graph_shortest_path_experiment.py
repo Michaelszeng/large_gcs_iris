@@ -21,10 +21,6 @@ from large_gcs.domination_checkers.domination_checker import DominationChecker
 from large_gcs.graph.voxel_graph import VoxelGraph
 from large_gcs.geometry.voxel_collision_checker import VoxelCollisionCheckerConvexObstacles
 from large_gcs.graph.graph import ShortestPathSolution
-from large_gcs.graph.incremental_contact_graph import IncrementalContactGraph
-from large_gcs.graph_generators.contact_graph_generator import (
-    ContactGraphGeneratorParams,
-)
 from large_gcs.geometry.polyhedron import Polyhedron
 from large_gcs.utils.hydra_utils import get_cfg_from_folder
 
@@ -60,8 +56,8 @@ def main(cfg: OmegaConf) -> None:
     )
     
     # 3D Test
+    # obstacles = [Polyhedron.from_vertices([[0.9,0.1,-1],[0.1,0.9,-1],[0.9,0.9,-1],[0.9,0.1,1],[0.1,0.9,1],[0.9,0.9,1]])]
     # g = VoxelGraph(
-    #     [Polyhedron.from_vertices([[0.9,0.1,-1],[0.1,0.9,-1],[0.9,0.9,-1],[0.9,0.1,1],[0.1,0.9,1],[0.9,0.9,1]])],  # obstacles
     #     s = np.array([0, 0, 0]),
     #     t = np.array([2, 2, 2]),
     #     workspace = np.array([[-4,  4],    # workspace x-lim
@@ -70,6 +66,7 @@ def main(cfg: OmegaConf) -> None:
     #     default_voxel_size = 1,
     #     should_add_gcs = True,
     #     const_edge_cost=cfg.const_edge_cost,
+    #     voxel_collision_checker=VoxelCollisionCheckerConvexObstacles(obstacles),
     # )
     
     cost_estimator: CostEstimator = instantiate(

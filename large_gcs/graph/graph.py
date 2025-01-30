@@ -467,7 +467,6 @@ class Graph:
                     x = np.concatenate([gcs_edge.xu(), gcs_edge.xv()])
                     binding = Binding[Constraint](constraint, x)
                     gcs_edge.AddConstraint(binding)
-
         if solver_options is not None:
             self._gcs_options_wo_relaxation.solver_options = solver_options
 
@@ -477,7 +476,7 @@ class Graph:
             self._gcs_options_wo_relaxation,
         )
         self._gcs_options_wo_relaxation.solver_options = SolverOptions()
-
+                
         if skip_post_solve:
             sol = self._parse_partial_convex_restriction_result(
                 result, should_return_result

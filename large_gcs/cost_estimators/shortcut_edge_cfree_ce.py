@@ -18,8 +18,6 @@ class ShortcutEdgeCfreeCE(CostEstimator):
         add_const_cost: bool = False,
         const_cost: float = 1e-1,
     ):
-        print(shortcut_edge_cost_factory)
-        print("================================================")
         # To allow function string path to be passed in from hydra config
         if type(shortcut_edge_cost_factory) == str:
             shortcut_edge_cost_factory = get_function_from_string(
@@ -99,7 +97,6 @@ class ShortcutEdgeCfreeCE(CostEstimator):
         sol = graph.solve_convex_restriction(
             conv_res_active_edges, skip_post_solve=skip_post_solve
         )
-        print(f"{sol.vertex_path} sol.cost: {sol.cost}")
 
         self._alg_metrics.update_after_gcs_solve(sol.time)
 

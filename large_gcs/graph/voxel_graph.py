@@ -20,7 +20,11 @@ from tqdm import tqdm
 from large_gcs.geometry.convex_set import ConvexSet
 from large_gcs.geometry.point import Point
 from large_gcs.geometry.voxel import Voxel
-from large_gcs.geometry.voxel_collision_checker import VoxelCollisionChecker, VoxelCollisionCheckerConvexObstacles
+from large_gcs.geometry.voxel_collision_checker import (
+    VoxelCollisionChecker,
+    VoxelSceneGraphCollisionChecker, 
+    VoxelCollisionCheckerConvexObstacles
+)
 from large_gcs.graph.cfree_cost_constraint_factory import (
     create_cfree_l2norm_vertex_cost,
     create_cfree_constant_edge_cost,
@@ -317,8 +321,6 @@ class VoxelGraph(Graph):
         """
         if self.base_dim not in [2, 3]:
             raise ValueError("Can only plot 2D or 3D voxel graphs")
-        if not isinstance(self.voxel_collision_checker, VoxelCollisionCheckerConvexObstacles):
-            raise ValueError("Can only plot voxel graphs with convex obstacles")
         
         # If this is the first time plotting, create a new figure and plot the 
         # source, target, and obstacles (which are static)
@@ -351,33 +353,71 @@ class VoxelGraph(Graph):
                 )
         
             # Plot obstacles
-            for obstacle in self.voxel_collision_checker.obstacles:
-                if hasattr(obstacle, 'vertices'):
-                    obstacle_vertices = obstacle.vertices
-                    if self.base_dim == 2:
-                        # Close the polygon by appending the first vertex
-                        obstacle_vertices = np.vstack((obstacle_vertices, obstacle_vertices[0]))
-                        ax.fill(
-                            obstacle_vertices[:, 0], obstacle_vertices[:, 1],
-                            color='black', alpha=0.5, edgecolor='black', linewidth=1
-                        )
-                    elif self.base_dim == 3:
-                        hull = ConvexHull(obstacle_vertices)
-                        
-                        # Each "simplex" in the hull is a triangle (defined by 3 vertices)
-                        faces = [obstacle_vertices[s] for s in hull.simplices]
-                        
-                        # Create a Poly3DCollection (triangular faces) for the hull
-                        hull_collection = Poly3DCollection(
-                            faces,
-                            alpha=0.5,          # Transparency
-                            facecolors='black', # Fill color
-                            edgecolors='black', # Edge color
-                            linewidths=1
-                        )
-                        
-                        # Add this 3D collection of triangles to the Axes
-                        ax.add_collection3d(hull_collection)
+            if isinstance(self.voxel_collision_checker, VoxelCollisionCheckerConvexObstacles):
+                for obstacle in self.voxel_collision_checker.obstacles:
+                    if hasattr(obstacle, 'vertices'):
+                        obstacle_vertices = obstacle.vertices
+                        if self.base_dim == 2:
+                            # Close the polygon by appending the first vertex
+                            obstacle_vertices = np.vstack((obstacle_vertices, obstacle_vertices[0]))
+                            ax.fill(
+                                obstacle_vertices[:, 0], obstacle_vertices[:, 1],
+                                color='black', alpha=0.5, edgecolor='black', linewidth=1
+                            )
+                        elif self.base_dim == 3:
+                            hull = ConvexHull(obstacle_vertices)
+                            
+                            # Each "simplex" in the hull is a triangle (defined by 3 vertices)
+                            faces = [obstacle_vertices[s] for s in hull.simplices]
+                            
+                            # Create a Poly3DCollection (triangular faces) for the hull
+                            hull_collection = Poly3DCollection(
+                                faces,
+                                alpha=0.5,          # Transparency
+                                facecolors='black', # Fill color
+                                edgecolors='black', # Edge color
+                                linewidths=1
+                            )
+                            
+                            # Add this 3D collection of triangles to the Axes
+                            ax.add_collection3d(hull_collection)
+                            
+            elif isinstance(self.voxel_collision_checker, VoxelSceneGraphCollisionChecker):
+                # Rejection sample and plot points where collisions are sampled
+                # Sample points in workspace
+                num_samples = 500
+                
+                # Sample points uniformly from workspace
+                samples = np.random.uniform(
+                    low=[bounds[0] for bounds in self.workspace],
+                    high=[bounds[1] for bounds in self.workspace],
+                    size=(num_samples, self.base_dim)
+                )
+                
+                # Check collisions for all samples
+                collision_free = self.voxel_collision_checker.check_configs_collision_free(samples)
+                collision_points = samples[~collision_free]
+                
+                # Plot the points
+                if self.base_dim == 2:
+                    ax.scatter(
+                        collision_points[:, 0], 
+                        collision_points[:, 1],
+                        color='black', 
+                        alpha=0.3, 
+                        s=10, 
+                        label='In Collision'
+                    )
+                elif self.base_dim == 3:
+                    ax.scatter(
+                        collision_points[:, 0], 
+                        collision_points[:, 1], 
+                        collision_points[:, 2],
+                        color='black', 
+                        alpha=0.3, 
+                        s=10, 
+                        label='In Collision'
+                    )
             
             # Create line objects for the path that we'll update
             # One line object for the main path, one for the shortcut edge (which will be red instead of blue)
