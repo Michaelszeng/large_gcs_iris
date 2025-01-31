@@ -6,7 +6,7 @@ defaults:
   - hydra: hydra
 
 graph_name: "cg_simple_1"
-heuristic_inflation_factor: 10
+heuristic_inflation_factor: 1
 should_add_const_edge_cost: true
 const_edge_cost: 1e-3
 

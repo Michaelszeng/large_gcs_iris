@@ -65,10 +65,9 @@ plant.Finalize()
 AddDefaultVisualization(robot_diagram_builder.builder(), meshcat=meshcat)
 diagram = robot_diagram_builder.Build()
 
-# Roll forward sim a bit to show the visualization
 simulator = Simulator(diagram)
 meshcat.StartRecording()
-simulator.AdvanceTo(0.001)
+simulator.AdvanceTo(0.001)  # Roll forward sim a bit to show the visualization
 
 simulator_context = simulator.get_mutable_context()
 plant_context = plant.GetMyMutableContextFromRoot(simulator_context)
@@ -79,6 +78,49 @@ collision_checker_params = {}
 collision_checker_params["robot_model_instances"] = robot_model_instances
 collision_checker_params["model"] = diagram
 collision_checker_params["edge_step_size"] = 0.125
+
+def animate_sol_meshcat(sol):
+    """ Constant-speed stepthrough animation of the solution trajectory."""
+    # Get last knot point from each trajectory point
+    last_knot_points = []
+    for traj_point in sol.trajectory:
+        # Reshape into knot points and take the last one
+        num_knot_points = len(traj_point) // num_robot_positions
+        knot_points = traj_point.reshape(num_knot_points, num_robot_positions)
+        last_knot_points.append(knot_points[-1])
+    
+    # Calculate total path length to normalize speed
+    path_length = 0
+    for i in range(len(sol.vertex_path)-1):
+        diff = last_knot_points[i+1] - last_knot_points[i]
+        path_length += np.linalg.norm(diff)
+    
+    # Set desired animation duration in seconds
+    duration = 2.0
+    steps_per_segment = 100
+    
+    for i in range(len(sol.vertex_path)-1):
+        start_pos = last_knot_points[i]
+        end_pos = last_knot_points[i+1]
+        
+        # Calculate segment length for speed normalization
+        segment_length = np.linalg.norm(end_pos - start_pos)
+        
+        # Interpolate between points
+        for t in range(steps_per_segment):
+            alpha = t / steps_per_segment
+            current_pos = start_pos + alpha * (end_pos - start_pos)
+            
+            # Set the position in the plant
+            plant.SetPositions(plant_context, current_pos)
+            simulator.AdvanceTo(simulator_context.get_time() + 0.001)
+            
+            # Calculate sleep duration based on segment length relative to total path
+            sleep_duration = (duration * segment_length / path_length) / steps_per_segment
+            time.sleep(sleep_duration)
+            
+    meshcat.PublishRecording()
+
 
 @hydra.main(version_base=None, config_path="../config", config_name="voxel_graph_traj_opt")
 def main(cfg: OmegaConf) -> None:
@@ -138,46 +180,7 @@ def main(cfg: OmegaConf) -> None:
         metrics_path = Path(full_log_dir) / f"{output_base}_metrics.json"
         alg.save_alg_metrics_to_file(metrics_path)
         
-    # Animate in meshcat
-    # Get last knot point from each trajectory point
-    last_knot_points = []
-    for traj_point in sol.trajectory:
-        # Reshape into knot points and take the last one
-        num_knot_points = len(traj_point) // num_robot_positions
-        knot_points = traj_point.reshape(num_knot_points, num_robot_positions)
-        last_knot_points.append(knot_points[-1])
-    
-    # Calculate total path length to normalize speed
-    path_length = 0
-    for i in range(len(sol.vertex_path)-1):
-        diff = last_knot_points[i+1] - last_knot_points[i]
-        path_length += np.linalg.norm(diff)
-    
-    # Set desired animation duration in seconds
-    duration = 2.0
-    steps_per_segment = 100
-    
-    for i in range(len(sol.vertex_path)-1):
-        start_pos = last_knot_points[i]
-        end_pos = last_knot_points[i+1]
-        
-        # Calculate segment length for speed normalization
-        segment_length = np.linalg.norm(end_pos - start_pos)
-        
-        # Interpolate between points
-        for t in range(steps_per_segment):
-            alpha = t / steps_per_segment
-            current_pos = start_pos + alpha * (end_pos - start_pos)
-            
-            # Set the position in the plant
-            plant.SetPositions(plant_context, current_pos)
-            simulator.AdvanceTo(simulator_context.get_time() + 0.001)
-            
-            # Calculate sleep duration based on segment length relative to total path
-            sleep_duration = (duration * segment_length / path_length) / steps_per_segment
-            time.sleep(sleep_duration)
-            
-    meshcat.PublishRecording()
+    animate_sol_meshcat(sol)
     
     return
 

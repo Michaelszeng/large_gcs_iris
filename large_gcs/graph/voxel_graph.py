@@ -326,7 +326,7 @@ class VoxelGraph(Graph):
         # source, target, and obstacles (which are static)
         fig = None
         if ax is None:
-            fig = plt.figure(figsize=(8, 8))
+            fig = plt.figure(figsize=(11, 8))
             if self.base_dim == 3:
                 ax = fig.add_subplot(111, projection='3d')
             else:
@@ -628,7 +628,8 @@ class VoxelGraph(Graph):
             ax.set_box_aspect([1, 1, 1])
             
         ax.grid(True, alpha=0.3)
-        ax.legend()
+        # ax.legend()
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         ax.set_title('Voxel Graph')
         
         return fig, ax

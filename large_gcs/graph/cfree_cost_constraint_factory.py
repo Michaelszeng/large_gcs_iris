@@ -88,8 +88,8 @@ def vertex_constraint_last_pos_equality_cfree(base_dim: int, num_knot_points: in
         A = np.zeros((base_dim, num_knot_points * base_dim))
         A[:, -base_dim:] = np.eye(base_dim)  # select last knot point
     
-    # b = sample
-    # return LinearEqualityConstraint(A, b)
+    b = sample
+    return LinearEqualityConstraint(A, b)
     
     tol = 1e-1
     lb = sample - tol

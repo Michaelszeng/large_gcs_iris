@@ -144,6 +144,7 @@ class GcsStar(SearchAlgorithm):
     def _run_iteration(self) -> Optional[ShortestPathSolution]:
         """Runs one iteration of the search algorithm."""
         n: SearchNode = self.pop_node_from_Q()
+        print(f"Popped node from Q with priority {n.priority}: {n.vertex_path}")
         
         if self._vis_params.animate:
             self._graph.update_animation(n.sol)

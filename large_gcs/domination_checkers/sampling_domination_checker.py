@@ -187,6 +187,7 @@ class SamplingDominationChecker(DominationChecker):
             self._graph.add_vertex(
                 vertex=Vertex(
                     convex_set=self._graph.vertices[candidate_node.vertex_name].convex_set,
+                    costs=self._graph.vertices[candidate_node.vertex_name].costs,  # Copy cost from original vertex
                     constraints=[vertex_constraint_last_pos_equality_cfree(self._graph.base_dim, self._graph.num_knot_points, sample_vertex_name, sample)],
                 ),
                 name=sample_vertex_name,
@@ -273,6 +274,8 @@ class SamplingDominationChecker(DominationChecker):
             )
             
         # Add edge between the sample and the second last vertex in the path
+        # effectively replacing the original last edge in the path that connected
+        # the second last vertex to the original last vertex.
         e = self._graph.edges[node.edge_path[-1]]
         edge_to_sample = Edge(
             u=e.u,
@@ -285,7 +288,8 @@ class SamplingDominationChecker(DominationChecker):
         active_edges = node.edge_path.copy()
         active_edges[-1] = edge_to_sample.key
 
-        sol = self._graph.solve_convex_restriction(active_edges, skip_post_solve=True)
+        # sol = self._graph.solve_convex_restriction(active_edges, skip_post_solve=True)
+        sol = self._graph.solve_convex_restriction(active_edges, skip_post_solve=False)
         self._alg_metrics.update_after_gcs_solve(sol.time)
         # Clean up edge, but leave the sample vertex (which may be used by other alternate paths)
         self._graph.remove_edge(edge_to_sample.key)
