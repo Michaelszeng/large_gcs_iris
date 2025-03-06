@@ -19,6 +19,7 @@ from large_gcs.algorithms.search_algorithm import AlgVisParams, SearchAlgorithm
 from large_gcs.cost_estimators.cost_estimator import CostEstimator
 from large_gcs.domination_checkers.domination_checker import DominationChecker
 from large_gcs.graph.voxel_graph import VoxelGraph
+from large_gcs.graph.polyhedron_graph import PolyhedronGraph
 from large_gcs.geometry.voxel_collision_checker import VoxelCollisionCheckerConvexObstacles
 from large_gcs.graph.graph import ShortestPathSolution
 from large_gcs.geometry.polyhedron import Polyhedron
@@ -44,29 +45,31 @@ def main(cfg: OmegaConf) -> None:
     
     # 2D Test
     obstacles = [Polyhedron.from_vertices([[0.9,0.1],[0.1,0.9],[0.9,0.9]])]
+    workspace = np.array([[-4, 4],    # workspace x-lim
+                          [-4, 4]])  # workspace y-lim
     g = VoxelGraph(
         s = np.array([0, 0]),
         t = np.array([2, 2]),
-        workspace = np.array([[-4, 4],    # workspace x-lim
-                              [-4, 4]]),  # workspace y-lim
+        workspace = workspace,
         default_voxel_size = 1,
         should_add_gcs = True,
         const_edge_cost=cfg.const_edge_cost,
-        voxel_collision_checker=VoxelCollisionCheckerConvexObstacles(obstacles),
+        voxel_collision_checker=VoxelCollisionCheckerConvexObstacles(obstacles, workspace),
     )
     
     # 3D Test
     # obstacles = [Polyhedron.from_vertices([[0.9,0.1,-1],[0.1,0.9,-1],[0.9,0.9,-1],[0.9,0.1,1],[0.1,0.9,1],[0.9,0.9,1]])]
+    # workspace = np.array([[-4,  4],    # workspace x-lim
+    #                       [-4,  4],    # workspace y-lim
+    #                       [-4,  4]]),  # workspace z-lim
     # g = VoxelGraph(
     #     s = np.array([0, 0, 0]),
     #     t = np.array([2, 2, 2]),
-    #     workspace = np.array([[-4,  4],    # workspace x-lim
-    #                           [-4,  4],    # workspace y-lim
-    #                           [-4,  4]]),  # workspace z-lim
+    #     workspace = workspace
     #     default_voxel_size = 1,
     #     should_add_gcs = True,
     #     const_edge_cost=cfg.const_edge_cost,
-    #     voxel_collision_checker=VoxelCollisionCheckerConvexObstacles(obstacles),
+    #     voxel_collision_checker=VoxelCollisionCheckerConvexObstacles(obstacles, workspace),
     # )
     
     cost_estimator: CostEstimator = instantiate(

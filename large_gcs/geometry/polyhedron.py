@@ -3,6 +3,7 @@ from typing import List, Type
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.linalg import block_diag
 import plotly.graph_objects as go
 from pydrake.all import (
     DecomposeAffineExpressions,
@@ -10,6 +11,9 @@ from pydrake.all import (
     FormulaKind,
     HPolyhedron,
     VPolytope,
+    MathematicalProgram,
+    Solve,
+    SolveInParallel,
 )
 from scipy.spatial import ConvexHull
 
@@ -28,7 +32,8 @@ class Polyhedron(ConvexSet):
     representation: {x| H x ≤ h}"""
 
     def __init__(
-        self, H: np.ndarray, h: np.ndarray, should_compute_vertices: bool = True
+        self, H: np.ndarray, h: np.ndarray, should_compute_vertices: bool = True,
+        num_knot_points: int = 1
     ):
         """Default constructor for the polyhedron {x| H x ≤ h}.
 
@@ -39,45 +44,56 @@ class Polyhedron(ConvexSet):
         self._vertices = None
         self._center = None
 
-        self._h_polyhedron = HPolyhedron(H, h)
         self._H = H
         self._h = h
-
+        self._h_polyhedron_in_space = HPolyhedron(H, h)
+        
         if should_compute_vertices:
-            if H.shape[1] == 1 or self._h_polyhedron.IsEmpty():
+            if H.shape[1] == 1 or self._h_polyhedron_in_space.IsEmpty():
                 logger.warning("Polyhedron is empty or 1D, skipping compute vertices")
                 return
 
             self._vertices = order_vertices_counter_clockwise(
-                VPolytope(self._h_polyhedron).vertices().T
+                VPolytope(self._h_polyhedron_in_space).vertices().T
             )
             H, h = Polyhedron._reorder_A_b_by_vertices(H, h, self._vertices)
 
-            self._h_polyhedron = HPolyhedron(H, h)
+            self._h_polyhedron_in_space = HPolyhedron(H, h)
             self._H = H
             self._h = h
 
-            # Compute center
-            try:
-                max_ellipsoid = self._h_polyhedron.MaximumVolumeInscribedEllipsoid()
-                self._center = np.array(max_ellipsoid.center())
-            except:
-                logger.warning("Could not compute center")
-                self._center = None
+        # Compute center
+        try:
+            max_ellipsoid = self._h_polyhedron_in_space.MaximumVolumeInscribedEllipsoid()
+            self._center = np.array(max_ellipsoid.center())
+        except:
+            logger.warning("Could not compute center")
+            self._center = None
+                
+        self._h_polyhedron = HPolyhedron(block_diag(*([H] * num_knot_points)), np.tile(h, num_knot_points))
+        print(f"self._h_polyhedron.A().shape: {self._h_polyhedron.A().shape}")
+        print(f"self._h_polyhedron.b().shape: {self._h_polyhedron.b().shape}")
+        self._num_knot_points = num_knot_points
 
     def create_nullspace_set(self):
-        # logger.debug(f"H size before: {self._h_polyhedron.A().shape}")
-        # self._h_polyhedron = self._h_polyhedron.ReduceInequalities(tol=0)
-        # logger.debug(f"H size after: {self._h_polyhedron.A().shape}")
-        if self._h_polyhedron.IsEmpty():
+        if self._h_polyhedron_in_space.IsEmpty():
             logger.warning("Polyhedron is empty, skipping nullspace set creation")
             return
         self._nullspace_set = NullspaceSet.from_hpolyhedron(
-            self._h_polyhedron, should_reduce_inequalities=False
+            self._h_polyhedron_in_space, should_reduce_inequalities=False
         )
+        
+    @classmethod
+    def from_drake_hpoly(cls, hpoly: HPolyhedron, should_compute_vertices: bool = False, num_knot_points: int = 1):
+        """Construct a polyhedron from a Drake HPolyhedron.
+        
+        Args:
+            Drake HPolyhedron object.
+        """
+        return cls(hpoly.A(), hpoly.b(), should_compute_vertices=should_compute_vertices, num_knot_points=num_knot_points)
 
     @classmethod
-    def from_vertices(cls, vertices):
+    def from_vertices(cls, vertices, num_knot_points: int = 1):
         """Construct a polyhedron from a list of vertices.
 
         Args:
@@ -100,7 +116,7 @@ class Polyhedron(ConvexSet):
         else:
             H, h = h_polyhedron.A(), h_polyhedron.b()
 
-        polyhedron = cls(H, h, should_compute_vertices=False)
+        polyhedron = cls(H, h, should_compute_vertices=False, num_knot_points=num_knot_points)
         if polyhedron._vertices is None:
             polyhedron._vertices = vertices
             # Set center to be the mean of the vertices
@@ -166,6 +182,57 @@ class Polyhedron(ConvexSet):
         polyhedron._d = d
 
         return polyhedron
+
+    def axis_aligned_bounding_box(self) -> tuple[np.ndarray, np.ndarray]:
+        for i in range(self.dim):
+            if self.vertices is not None:
+                # Currently untested
+                return np.array([self.vertices[:, i].min(), self.vertices[:, i].max()])
+            else:
+                # Solve LPs within HPolyhedrons to find max and min in each dimension
+                A, b = self.A(), self.b()
+                min_coords = np.zeros(self.dim)
+                max_coords = np.zeros(self.dim)
+
+                # Compile MathematicalPrograms
+                programs = []
+                x_vars = []
+                for i in range(self.dim):
+                    # Program for minimizing xi
+                    prog_min = MathematicalProgram()
+                    x_min = prog_min.NewContinuousVariables(self.dim, f"x_min_{i}")
+                    prog_min.AddLinearConstraint(A @ x_min <= b)
+                    prog_min.AddCost(x_min[i])
+                    programs.append(prog_min)
+                    x_vars.append(x_min)
+
+                    # Program for maximizing xi
+                    prog_max = MathematicalProgram()
+                    x_max = prog_max.NewContinuousVariables(self.dim, f"x_max_{i}")
+                    prog_max.AddLinearConstraint(A @ x_max <= b)
+                    prog_max.AddCost(-x_max[i])
+                    programs.append(prog_max)
+                    x_vars.append(x_max)
+
+                # Solve in parallel
+                results = SolveInParallel(programs)
+                # results = [Solve(program) for program in programs]
+
+                # Extract results
+                for i in range(self.dim):
+                    min_result = results[2*i]
+                    max_result = results[2*i + 1]
+                    
+                    if not min_result.is_success():
+                        raise RuntimeError("LP failed for min bound computation.")
+                    if not max_result.is_success():
+                        raise RuntimeError("LP failed for max bound computation.")
+                        
+                    min_coords[i] = min_result.GetSolution(x_vars[2*i][i])
+                    max_coords[i] = max_result.GetSolution(x_vars[2*i + 1][i])
+
+                return min_coords, max_coords
+                
 
     def _plot(self, ax=None, **kwargs):
         if ax is None:
@@ -340,11 +407,16 @@ class Polyhedron(ConvexSet):
 
     @property
     def dim(self):
-        return self.set.A().shape[1]
+        """Dimension of space; NOT of the underlying convex set."""
+        return self._h_polyhedron_in_space.A().shape[1]
 
     @property
     def set(self):
         return self._h_polyhedron
+    
+    @property
+    def set_in_space(self):
+        return self._h_polyhedron_in_space
 
     @property
     def H(self):

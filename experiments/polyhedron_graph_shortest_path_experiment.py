@@ -44,6 +44,8 @@ def main(cfg: OmegaConf) -> None:
     logger.info(cfg)
     
     # 2D Test
+    # obstacles = [Polyhedron.from_vertices([[2,0],[0,2],[2,2]])]
+    # obstacles = [Polyhedron.from_vertices([[0.1,0.9],[0.9,0.1],[0.9,0.9]])]
     obstacles = [Polyhedron.from_vertices([[0.9,0.1],[0.1,0.9],[0.9,0.9]])]
     workspace = np.array([[-4, 4],    # workspace x-lim
                           [-4, 4]])   # workspace y-lim
@@ -89,7 +91,7 @@ def main(cfg: OmegaConf) -> None:
     g.init_animation()
 
     sol: ShortestPathSolution = alg.run()
-    logger.info(f"Solution Trajectory: {sol.trajectory}")
+    # logger.info(f"Solution Trajectory: {sol.trajectory}")
 
     # g.plot(vertices=g.vertices, sol=sol)
     # plt.show()

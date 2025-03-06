@@ -118,19 +118,14 @@ class VoxelGraph(Graph):
         
         self.offsets = generate_all_offsets(self.base_dim)  # convenience variable containing all possible offsets in {-1,0,1}^dim
         # self.offsets = generate_all_offsets_no_diagonal(self.base_dim)
-        
-        sets = []
-        set_ids = []
 
-        sets += [Point(s), Point(t)]
-        set_ids += ["source", "target"]
-
+        sets = [Point(s), Point(t)]
         # Add convex sets to graph (Need to do this before generating edges)
         self.add_vertices_from_sets(
             sets,
             costs=self._create_vertex_costs(sets),
             constraints=self._create_vertex_constraints(sets),
-            names=set_ids,
+            names=["source", "target"],
         )  # This function is defined in graph.py
         
         self.set_source("source")

@@ -2,6 +2,8 @@ import logging
 import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import numpy as np
+from itertools import product
+
 from pydrake.all import Hyperrectangle as DrakeHyperrectangle
 from pydrake.all import RandomGenerator
 
@@ -56,6 +58,16 @@ class Voxel(ConvexSet):
             logger.warn("Failed to sample convex set" f"\n{e}")
             return np.array([chebyshev_center])
         return np.array(samples)
+    
+    def get_vertices(self):
+        """
+        Get the vertices of the voxel in space. Return then as a n x k array,
+        where n is the dimension of space and k is the number of vertices.
+        """
+        lb = self.set_in_space.lb()
+        ub = self.set_in_space.ub()
+        vertices = np.array(list(product(*[[lb[i], ub[i]] for i in range(self.dim)]))).T
+        return vertices
         
     def _plot(self, ax=None, **kwargs):
         if ax is None:

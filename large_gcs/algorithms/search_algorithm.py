@@ -412,6 +412,7 @@ class SearchAlgorithm(ABC):
         self._S[vertex_name].popleft()
 
     def update_expanded(self, n: SearchNode):
+        """Keep track of expanded vertices to prevent re-expansion."""
         if n.vertex_name in self._expanded:
             self._alg_metrics.n_vertices_reexpanded += 1
         else:

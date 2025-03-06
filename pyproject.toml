@@ -7,7 +7,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<4.0"
-numpy = "^1.24.3"
+numpy = "^1.23.5"
 matplotlib = "^3.7.1"
 ipykernel = "^6.23.1"
 scipy = "^1.10.1"
@@ -24,6 +24,7 @@ pdbpp = "^0.10.3"
 plotly = "^5.20.0"
 docformatter = "^1.7.5"
 drake = "^1.28.0"
+manipulation = "^2024.5.25"
 nbformat = "^5.10.4"
 
 [tool.isort]
