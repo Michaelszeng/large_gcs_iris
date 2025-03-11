@@ -188,7 +188,7 @@ class SamplingDominationChecker(DominationChecker):
                 vertex=Vertex(
                     convex_set=self._graph.vertices[candidate_node.vertex_name].convex_set,
                     costs=self._graph.vertices[candidate_node.vertex_name].costs,  # Copy cost from original vertex
-                    constraints=[vertex_constraint_last_pos_equality_cfree(self._graph.base_dim, self._graph.num_knot_points, sample_vertex_name, sample)],
+                    constraints=[vertex_constraint_last_pos_equality_cfree(self._graph.base_dim, self._graph.num_knot_points, sample_vertex_name, proj_sample)],
                 ),
                 name=sample_vertex_name,
             )
