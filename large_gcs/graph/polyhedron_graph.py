@@ -43,6 +43,7 @@ from large_gcs.geometry.voxel_collision_checker import (
     VoxelSceneGraphCollisionChecker, 
     VoxelCollisionCheckerConvexObstacles
 )
+from large_gcs.geometry.utils import SuppressOutput
 from large_gcs.graph.cfree_cost_constraint_factory import (
     create_cfree_l2norm_vertex_cost,
     create_cfree_constant_edge_cost,
@@ -97,10 +98,14 @@ class PolyhedronGraph(Graph):
         self.iris_options.require_sample_point_is_contained = True
         self.kEpsilonEllipsoid = 1e-5
         
-        self.num_regions = 0  # this var should only be modified by calls to get_new_region_name; it is only used for naming new reigons
+        self.clique_inflation_options = FastCliqueInflationOptions()
+        # self.clique_inflation_options.verbose = True
         
-        self.covered_voxels = set()  # Keep track of voxels that are fully contained in a region
-        self.uncovered_voxels = set()  # Keep track of voxels that are not fully contained in a region
+        self.num_regions = 0  # this var should only be modified by calls to get_new_region_name; it is only used for naming new reigons
+        self.num_voxels = 0  # this var should only be modified by calls to get_new_voxel_name; it is only used for naming new voxels
+        self.voxel_names_prev_parent_region_name = ""  # this var should only be modified by calls to get_new_voxel_name; it is only used for naming new voxels
+        
+        self.uncovered_voxels = set()  # Set of Voxel names (str); keep track of voxels that are not fully contained in a region
     
         sets = [Point(s), Point(t)]
         # Add convex sets to graph (Need to do this before generating edges)
@@ -114,10 +119,24 @@ class PolyhedronGraph(Graph):
         self.set_source("source")
         self.set_target("target") 
         
+    def get_new_vertex_name(self):
+        n = self.num_vertices
+        self.num_vertices += 1
+        return str(n)
+        
     def get_new_region_name(self):
         n = self.num_regions
         self.num_regions += 1
         return str(n)
+
+    def get_new_voxel_name(self, parent_region_name: str):
+        # Begin counting voxels for new parent region
+        if parent_region_name != self.voxel_names_prev_parent_region_name:
+            self.num_voxels = 0
+            self.voxel_names_prev_parent_region_name = parent_region_name
+        n = self.num_voxels
+        self.num_voxels += 1
+        return f"{parent_region_name}_voxel_{n}"
         
     def generate_successors(self, vertex_name: str) -> None:
         """Generates neighbors and adds them to the graph, also adds edges from
@@ -126,10 +145,8 @@ class PolyhedronGraph(Graph):
         
         if vertex_name == self.source_name:
             # Grow a region around the source
-            clique_ellipse = Hyperellipsoid.MakeHypersphere(self.kEpsilonEllipsoid, self.s)
-            region = IrisZo(self.voxel_collision_checker.checker, clique_ellipse, self.domain, self.iris_options)
-            print(f"region.A(): {region.A()}")
-            print(f"region.b(): {region.b()}")
+            starting_ellipse = Hyperellipsoid.MakeHypersphere(self.kEpsilonEllipsoid, self.s)
+            region = IrisZo(self.voxel_collision_checker.checker, starting_ellipse, self.domain, self.iris_options)
             polyhedron = Polyhedron.from_drake_hpoly(region, should_compute_vertices=True if self.base_dim in [2, 3] else False, num_knot_points=self.num_knot_points)  # Compute vertices for 2D/3D visualization
             neighbors.append((self.source_name, self.get_new_region_name(), False, polyhedron, [self.source_name]))
             
@@ -139,17 +156,70 @@ class PolyhedronGraph(Graph):
         else:
             if isinstance(self.vertices[vertex_name].convex_set, Voxel):
                 """
-                1. Check if voxel is in `self.covered_voxels`; if so, continue
+                1. Check if voxel is in `self.uncovered_voxels`; if not, continue
                 2. Inflate a new region around the voxel
                 3. Switch the vertices[vertex_name] from containing the voxel to containing the new region
-                4. For `other_voxel` that is not in `self.covered_voxels`:
-                    if `other_voxel` is fully-contained in new region: add to `covered_voxels`
+                4. For `other_voxel` that is in `self.uncovered_voxels`:
+                    if `other_voxel` is fully-contained in new region: remove from `self.uncovered_voxels`
                 5. Continue in the instance(self.vertices[vertex_name].convex_set, Polyhedron) case below (now that the vertex contains a region)
                 """
+                voxel = self.vertices[vertex_name].convex_set
+                if vertex_name not in self.uncovered_voxels:  # i.e. voxel is covered by a region
+                    return
                 
-                # AddMeshcatTriad(self.meshcat, f"{0}", X_PT=self.s)
-                # print(f"Seeding a region at: {q.flatten()}")
+                # Inflate a new region around the voxel
+                # Seed region using clique formed by voxel vertices
+                region_name = self.get_new_region_name()
+                try:
+                    # Errors may occur if collision sampling does not detect a collision
+                    region = FastCliqueInflation(self.voxel_collision_checker.checker, voxel.get_vertices(), self.domain, self.clique_inflation_options)
+                except:
+                    print(f"Error inflating region for voxel: {voxel.center}.")
+                    return
+                polyhedron = Polyhedron.from_drake_hpoly(region, should_compute_vertices=True if self.base_dim in [2, 3] else False, num_knot_points=self.num_knot_points)  # Compute vertices for 2D/3D visualization
+                print("=======================================================")
+                print("INFLATED REGION")
+                print("=======================================================")
                 
+                # Swap the voxel in the graph with the new region
+                self.vertices[region_name] = self.vertices[vertex_name]  # Copy over vertex data
+                self.vertices[region_name].convex_set = polyhedron  # Replace voxel with region
+                self.vertices.pop(vertex_name)  # Remove old voxel
+                
+                # Remove the voxel from `self.uncovered_voxels`
+                self.uncovered_voxels.remove(vertex_name)
+                
+                # Check if new region covered any voxels; if so:
+                # 1. remove those voxels from `self.uncovered_voxels`
+                # 2. add edges between new region and that voxel's parent region
+                voxels_to_remove = []
+                for other_voxel_name in self.uncovered_voxels:
+                    # Check if all corners of other_voxel are in region
+                    voxel_covered = True
+                    for vtx in self.vertices[other_voxel_name].convex_set.get_vertices().T:
+                        if not region.PointInSet(vtx):
+                            voxel_covered = False
+                            break
+                    if not voxel_covered:
+                        continue
+                    
+                    voxels_to_remove.append(other_voxel_name)
+                
+                for voxel_name in voxels_to_remove:
+                    self.uncovered_voxels.remove(voxel_name)
+                    voxel_parent_region_name = self.vertices[voxel_name].convex_set.parent_region_name
+                    self.add_undirected_edge(
+                        Edge(
+                            u=region_name,
+                            v=voxel_parent_region_name,
+                            costs=self._create_single_edge_costs(region_name, voxel_parent_region_name),
+                            constraints=self._create_single_edge_constraints(region_name, voxel_parent_region_name),
+                        ),
+                        should_add_to_gcs=self._should_add_gcs, 
+                    )
+                    
+                # Update vertex_name to refer to new region
+                vertex_name = region_name
 
             """
             Now, handle generation of voxel successors of polyhedron
@@ -175,7 +245,7 @@ class PolyhedronGraph(Graph):
                 center = min_coords + (np.array(idx) + 0.5) * self.default_voxel_size
                 if center.shape != min_coords.shape:  # Ensure correct dimensionality
                     center = center[:len(min_coords)]
-                voxels.append(Voxel(center, self.default_voxel_size, self.num_knot_points))
+                voxels.append(Voxel(center, self.default_voxel_size, self.num_knot_points, parent_region_name=vertex_name))
                 
             # Check partial containment of voxels
             start = time.time()
@@ -183,9 +253,9 @@ class PolyhedronGraph(Graph):
             voxel_progs = []
             for voxel in voxels:
                 # Check if vertices of voxels are all contained in region (NOT full containment)
-                vertices = voxel.get_vertices()  # base_dim x num_vertices
-                num_vertices = vertices.shape[1]
-                if np.all(region.H @ vertices <= np.tile(region.h, (num_vertices, 1)).T):
+                vtxs = voxel.get_vertices()  # base_dim x num_vertices
+                num_vtxs = vtxs.shape[1]
+                if np.all(region.H @ vtxs <= np.tile(region.h, (num_vtxs, 1)).T):
                     continue
                 
                 # Check if voxel intersects with obstacle
@@ -198,16 +268,16 @@ class PolyhedronGraph(Graph):
                 prog = MathematicalProgram()
                 # Find x subject to: x is a convex combination of vertices, x is in region
                 x = prog.NewContinuousVariables(voxel.dim, "x")  # (base_dim,)
-                lam = prog.NewContinuousVariables(num_vertices, "lam")  # (num_vertices,) - One lambda per vertex
+                lam = prog.NewContinuousVariables(num_vtxs, "lam")  # (num_vertices,) - One lambda per vertex
                 # lam >= 0
-                for i in range(num_vertices):
+                for i in range(num_vtxs):
                     prog.AddConstraint(lam[i] >= 0)
                 #1^T lam = 1  (i.e. components of lambda must sum to 1)
-                prog.AddLinearEqualityConstraint(np.ones((1, num_vertices)), [1], lam)
+                prog.AddLinearEqualityConstraint(np.ones((1, num_vtxs)), [1], lam)
                 # x is a convex combination of vertices
                 for d in range(voxel.dim):
-                    # x[d] = sum_{i=1}^{num_vertices} lam[i] * vertices[d, i]
-                    prog.AddConstraint(x[d] == vertices[d, :] @ lam)
+                    # x[d] = sum_{i=1}^{num_vtxs} lam[i] * vtxs[d, i]
+                    prog.AddConstraint(x[d] == vtxs[d, :] @ lam)
                 # x ∈ region
                 prog.AddConstraint(LinearConstraint(region.H, np.full((region.H.shape[0],), -np.inf), region.h), x)
                 voxel_progs.append(prog)
@@ -224,24 +294,24 @@ class PolyhedronGraph(Graph):
                     pass
                     # print(f"No intersection found for voxel with center: {voxel.center}")
             print(f"Time taken to solve voxels: {time.time() - start}")
-            # Check full containment of voxels in all other regions and determine
-            # which regions to add edges between
-            region_neighbors = []
-            for voxel in partially_contained_voxels:
-                for region_name in self.vertices:
-                    pass
-                
-                # Just for plotting
-                vertex = Vertex(voxel, costs=[], constraints=[])
-                self.add_vertex(vertex, f"test_voxel_{self.get_new_region_name()}", should_add_to_gcs=self._should_add_gcs)
-            self.update_animation(None)
-            time.sleep(5)
-                
-            return
-        
-        
             
-
+            # Add voxel successors to neighbors
+            for voxel in partially_contained_voxels:
+                neighbors.append((
+                    vertex_name,
+                    self.get_new_voxel_name(vertex_name),
+                    False,
+                    voxel
+                ))
+            
+            # # Just for plotting
+            # for voxel in partially_contained_voxels:
+            #     vertex = Vertex(voxel, costs=[], constraints=[])
+            #     self.add_vertex(vertex, f"test_voxel_{self.get_new_region_name()}", should_add_to_gcs=self._should_add_gcs)
+            # self.update_animation(None)
+            # time.sleep(5)
+                
+            # return
 
                 
         for neighbor_data in neighbors:
@@ -304,6 +374,7 @@ class PolyhedronGraph(Graph):
                 ),
                 should_add_to_gcs=self._should_add_gcs,
             )
+            self.uncovered_voxels.add(v)
         
         
         # If v is a polyhedron, add edge from v to intersecting neighbors given in v_neighbors
@@ -319,8 +390,6 @@ class PolyhedronGraph(Graph):
                     ),
                     should_add_to_gcs=self._should_add_gcs,
                 )
-                
-        print("3")
     
     def _does_vertex_have_possible_edge_to_target(self, vertex_name: str) -> bool:
         """Determine if we can add an edge to the target vertex."""
