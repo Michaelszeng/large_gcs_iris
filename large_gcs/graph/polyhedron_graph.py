@@ -101,9 +101,7 @@ class PolyhedronGraph(Graph):
         self.clique_inflation_options = FastCliqueInflationOptions()
         # self.clique_inflation_options.verbose = True
         
-        self.num_regions = 0  # this var should only be modified by calls to get_new_region_name; it is only used for naming new reigons
-        self.num_voxels = 0  # this var should only be modified by calls to get_new_voxel_name; it is only used for naming new voxels
-        self.voxel_names_prev_parent_region_name = ""  # this var should only be modified by calls to get_new_voxel_name; it is only used for naming new voxels
+        self.num_vertices = 0  # this var should only be modified by calls to get_new_vertex_name; it is only used for naming new reigons
         
         self.uncovered_voxels = set()  # Set of Voxel names (str); keep track of voxels that are not fully contained in a region
     
@@ -124,20 +122,6 @@ class PolyhedronGraph(Graph):
         self.num_vertices += 1
         return str(n)
         
-    def get_new_region_name(self):
-        n = self.num_regions
-        self.num_regions += 1
-        return str(n)
-
-    def get_new_voxel_name(self, parent_region_name: str):
-        # Begin counting voxels for new parent region
-        if parent_region_name != self.voxel_names_prev_parent_region_name:
-            self.num_voxels = 0
-            self.voxel_names_prev_parent_region_name = parent_region_name
-        n = self.num_voxels
-        self.num_voxels += 1
-        return f"{parent_region_name}_voxel_{n}"
-        
     def generate_successors(self, vertex_name: str) -> None:
         """Generates neighbors and adds them to the graph, also adds edges from
         vertex to neighbors."""
@@ -148,7 +132,7 @@ class PolyhedronGraph(Graph):
             starting_ellipse = Hyperellipsoid.MakeHypersphere(self.kEpsilonEllipsoid, self.s)
             region = IrisZo(self.voxel_collision_checker.checker, starting_ellipse, self.domain, self.iris_options)
             polyhedron = Polyhedron.from_drake_hpoly(region, should_compute_vertices=True if self.base_dim in [2, 3] else False, num_knot_points=self.num_knot_points)  # Compute vertices for 2D/3D visualization
-            neighbors.append((self.source_name, self.get_new_region_name(), False, polyhedron, [self.source_name]))
+            neighbors.append((self.source_name, self.get_new_vertex_name(), False, polyhedron, [self.source_name]))
             
         elif vertex_name == self.target_name:
             raise ValueError("Should not need to generate neighbors for target vertex")
@@ -169,7 +153,6 @@ class PolyhedronGraph(Graph):
                 
                 # Inflate a new region around the voxel
                 # Seed region using clique formed by voxel vertices
-                region_name = self.get_new_region_name()
                 try:
                     # Errors may occur if collision sampling does not detect a collision
                     region = FastCliqueInflation(self.voxel_collision_checker.checker, voxel.get_vertices(), self.domain, self.clique_inflation_options)
@@ -177,22 +160,17 @@ class PolyhedronGraph(Graph):
                     print(f"Error inflating region for voxel: {voxel.center}.")
                     return
                 polyhedron = Polyhedron.from_drake_hpoly(region, should_compute_vertices=True if self.base_dim in [2, 3] else False, num_knot_points=self.num_knot_points)  # Compute vertices for 2D/3D visualization
-                print("=======================================================")
-                print("INFLATED REGION")
-                print("=======================================================")
                 
                 # Swap the voxel in the graph with the new region
-                self.vertices[region_name] = self.vertices[vertex_name]  # Copy over vertex data
-                self.vertices[region_name].convex_set = polyhedron  # Replace voxel with region
-                self.vertices.pop(vertex_name)  # Remove old voxel
+                self.vertices[vertex_name].convex_set = polyhedron  # Replace voxel with region
                 
                 # Remove the voxel from `self.uncovered_voxels`
                 self.uncovered_voxels.remove(vertex_name)
                 
                 # Check if new region covered any voxels; if so:
                 # 1. remove those voxels from `self.uncovered_voxels`
-                # 2. add edges between new region and that voxel's parent region
-                voxels_to_remove = []
+                # 2. add edges between new region and that covered voxel's parent region
+                covered_voxels = []
                 for other_voxel_name in self.uncovered_voxels:
                     # Check if all corners of other_voxel are in region
                     voxel_covered = True
@@ -203,23 +181,21 @@ class PolyhedronGraph(Graph):
                     if not voxel_covered:
                         continue
                     
-                    voxels_to_remove.append(other_voxel_name)
+                    print(f"voxel: {other_voxel_name} is covered.")
+                    covered_voxels.append(other_voxel_name)
                 
-                for voxel_name in voxels_to_remove:
+                for voxel_name in covered_voxels:
                     self.uncovered_voxels.remove(voxel_name)
                     voxel_parent_region_name = self.vertices[voxel_name].convex_set.parent_region_name
                     self.add_undirected_edge(
                         Edge(
-                            u=region_name,
+                            u=vertex_name,
                             v=voxel_parent_region_name,
-                            costs=self._create_single_edge_costs(region_name, voxel_parent_region_name),
-                            constraints=self._create_single_edge_constraints(region_name, voxel_parent_region_name),
+                            costs=self._create_single_edge_costs(vertex_name, voxel_parent_region_name),
+                            constraints=self._create_single_edge_constraints(vertex_name, voxel_parent_region_name),
                         ),
                         should_add_to_gcs=self._should_add_gcs, 
                     )
-                    
-                # Update vertex_name to refer to new region
-                vertex_name = region_name
 
             """
             Now, handle generation of voxel successors of polyhedron
@@ -299,7 +275,7 @@ class PolyhedronGraph(Graph):
             for voxel in partially_contained_voxels:
                 neighbors.append((
                     vertex_name,
-                    self.get_new_voxel_name(vertex_name),
+                    self.get_new_vertex_name(),
                     False,
                     voxel
                 ))
@@ -646,6 +622,8 @@ class PolyhedronGraph(Graph):
         for vertex_name, vertex in self.vertices.items():
             if self.base_dim == 2:
                 if isinstance(vertex.convex_set, Voxel):
+                    if vertex_name not in self.uncovered_voxels:
+                        continue
                     center = vertex.convex_set.center
                     size = vertex.convex_set.size
                     if self.base_dim == 2:
@@ -662,6 +640,8 @@ class PolyhedronGraph(Graph):
                     self.voxel_patches.append(polygon_patch)
             elif self.base_dim == 3:
                 if isinstance(vertex.convex_set, Voxel):
+                    if vertex_name not in self.uncovered_voxels:
+                        continue
                     center = vertex.convex_set.center
                     size = vertex.convex_set.size
                     # Create the 8 vertices of the cube

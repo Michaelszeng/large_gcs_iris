@@ -426,6 +426,8 @@ class Graph:
         """
         edge_path = [self.edges[edge_key] for edge_key in active_edge_keys]
         vertex_name_path = self._convert_conv_res_edges_to_vertex_path(edge_path)
+        print(f"vertex_name_path: {vertex_name_path}")
+        print(f"self.vertices.keys(): {self.vertices.keys()}")
         vertex_path = [self.vertices[vertex_name] for vertex_name in vertex_name_path]
         # gcs_edges = [edge.gcs_edge for edge in edge_path]
         # logger.debug(f"Solving convex restriction for vpath: {vertex_name_path}")

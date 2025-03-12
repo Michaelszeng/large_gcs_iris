@@ -17,7 +17,7 @@ class Voxel(ConvexSet):
     Voxel convex set defined by a center and a voxel size (side length).
     """
 
-    def __init__(self, center, voxel_size, num_knot_points):
+    def __init__(self, center, voxel_size, num_knot_points, parent_region_name=None):
         """
         The voxel will have dimension equal to the dimension of `center`.
         
@@ -37,27 +37,33 @@ class Voxel(ConvexSet):
         self._voxel_size = voxel_size
         self._num_knot_points = num_knot_points
         
-    def get_samples(self, n_samples=100) -> np.ndarray:
+        # For PolyhedronGraph, the parent region is the IRIS region whose boundary the voxel was generated at
+        self._parent_region_name = parent_region_name
+        
+    def get_samples(self, sample_in_space=True, n_samples=100) -> np.ndarray:
         """
         This needs to be overridden in a voxel graph because the voxel's 
         _set representation has dimension `self.dim * self._num_knot_points`
         while we want the samples to have dimension `self.dim`. Instead of
         sampling from _set, we sample from _set_in_space.
         """
-        samples = []
-        generator = RandomGenerator()
-        try:
-            samples.append(self.set_in_space.UniformSample(generator))
-            logger.debug(f"Sampled 1 points from convex set")
-            for i in range(n_samples - 1):
-                # Hyperrectangle doesn't need previous sample or mixing steps
+        if sample_in_space:
+            samples = []
+            generator = RandomGenerator()
+            try:
                 samples.append(self.set_in_space.UniformSample(generator))
-                logger.debug(f"Sampled {i+2} points from convex set")
-        except (RuntimeError, ValueError) as e:
-            chebyshev_center = self.set.ChebyshevCenter()
-            logger.warn("Failed to sample convex set" f"\n{e}")
-            return np.array([chebyshev_center])
-        return np.array(samples)
+                logger.debug(f"Sampled 1 points from convex set")
+                for i in range(n_samples - 1):
+                    # Hyperrectangle doesn't need previous sample or mixing steps
+                    samples.append(self.set_in_space.UniformSample(generator))
+                    logger.debug(f"Sampled {i+2} points from convex set")
+            except (RuntimeError, ValueError) as e:
+                chebyshev_center = self.set.ChebyshevCenter()
+                logger.warn("Failed to sample convex set" f"\n{e}")
+                return np.array([chebyshev_center])
+            return np.array(samples)
+        else:
+            return super().get_samples(n_samples)
     
     def get_vertices(self):
         """
@@ -122,3 +128,8 @@ class Voxel(ConvexSet):
     def size(self):
         """Side length of voxel"""
         return self._voxel_size
+    
+    @property
+    def parent_region_name(self):
+        """Parent region of the voxel"""
+        return self._parent_region_name

@@ -27,7 +27,7 @@ class SetSamples:
             samples = np.array([vertex.convex_set.center])
         else:
             # np.random.seed(0)
-            samples = vertex.convex_set.get_samples(num_samples)
+            samples = vertex.convex_set.get_samples(n_samples=num_samples)
             # Round the samples to the nearest 1e-6
             # samples = np.round(samples, 6)
         return cls(
@@ -252,7 +252,7 @@ class SamplingDominationChecker(DominationChecker):
         # Generate samples if samples don't already exist (and cache them in self._set_samples)
         if vertex_name not in self._set_samples:
             logger.debug(f"Adding samples for {vertex_name}")
-            # Generate sample wtihin convex set of vertex
+            # Generate sample within convex set of vertex
             self._set_samples[vertex_name] = SetSamples.from_vertex(
                 vertex_name,
                 self._graph.vertices[vertex_name],

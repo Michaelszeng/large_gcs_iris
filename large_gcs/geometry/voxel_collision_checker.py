@@ -34,9 +34,6 @@ class VoxelCollisionCheckerConvexObstacles(VoxelCollisionChecker):
             # Only handle 2D and 3D for now
             assert self.ambient_dim in [2, 3], "Only 2D and 3D are supported for now."
             
-            print(workspace)
-            print(workspace[0,0])
-            
             if self.ambient_dim == 2:
                 urdf = f"""<robot name="robot">
                     <link name="movable">
@@ -95,7 +92,7 @@ class VoxelCollisionCheckerConvexObstacles(VoxelCollisionChecker):
         
         self.rng = RandomGenerator(1234)
         
-    def check_voxel_collision_free(self, voxel: Voxel, use_intersection: bool = False, num_samples: int = 20) -> bool:
+    def check_voxel_collision_free(self, voxel: Voxel, use_intersection: bool = False, num_samples: int = 50) -> bool:
         """
         Check if a voxel is collision free.
         
@@ -107,6 +104,12 @@ class VoxelCollisionCheckerConvexObstacles(VoxelCollisionChecker):
                 if not obstacle.set.Intersection(voxel.set_in_space.MakeHPolyhedron()).IsEmpty():
                     return False
         else:
+            # First, check corners of voxels
+            for corner in voxel.get_vertices().T:
+                for obstacle in self.obstacles:
+                    if obstacle.set.PointInSet(corner):
+                        return False  # Collision detected
+            # Then, check random samples within voxel
             for _ in range(num_samples):
                 sample = voxel.set_in_space.UniformSample(self.rng)
                 for obstacle in self.obstacles:

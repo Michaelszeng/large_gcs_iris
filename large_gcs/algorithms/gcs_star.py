@@ -19,7 +19,8 @@ from large_gcs.domination_checkers.sampling_domination_checker import (
     SamplingDominationChecker,
 )
 from large_gcs.graph.graph import Graph, ShortestPathSolution
-from large_gcs.graph.incremental_contact_graph import IncrementalContactGraph
+from large_gcs.graph.polyhedron_graph import PolyhedronGraph
+from large_gcs.geometry.voxel import Voxel
 
 logger = logging.getLogger(__name__)
 # tracemalloc.start()
@@ -47,10 +48,6 @@ class GcsStar(SearchAlgorithm):
         allow_cycles: bool = True,
         animate: bool = True,
     ):
-        if isinstance(graph, IncrementalContactGraph):
-            assert (
-                graph._should_add_gcs == True
-            ), "Required because operating directly on graph instead of subgraph"
         super().__init__(
             graph=graph,
             heuristic_inflation_factor=heuristic_inflation_factor,
@@ -144,6 +141,13 @@ class GcsStar(SearchAlgorithm):
     def _run_iteration(self) -> Optional[ShortestPathSolution]:
         """Runs one iteration of the search algorithm."""
         n: SearchNode = self.pop_node_from_Q()
+        
+        # Janky way to skip covered voxels in the PolyhedronGraph "Best Voxel Inflation" algorithm
+        if isinstance(self._graph, PolyhedronGraph):
+            if isinstance(self._graph.vertices[n.vertex_name].convex_set, Voxel) and n.vertex_name not in self._graph.uncovered_voxels:  # i.e. node ends at a covered voxel
+                print(f"Skipping node popped from Q because it ends at a covered voxel: {n.vertex_name}")
+                return
+        
         print(f"Popped node from Q with priority {n.priority}: {n.vertex_path}")
         
         if self._vis_params.animate:
@@ -172,7 +176,8 @@ class GcsStar(SearchAlgorithm):
         for v in successors:
             if not self._allow_cycles and v in n.vertex_path:
                 continue
-
+            
+            print(f"v: {v}")
             early_terminate_sol = self._explore_successor(n, v)
             if early_terminate_sol is not None:
                 return early_terminate_sol

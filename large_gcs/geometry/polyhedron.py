@@ -14,6 +14,7 @@ from pydrake.all import (
     MathematicalProgram,
     Solve,
     SolveInParallel,
+    RandomGenerator,
 )
 from scipy.spatial import ConvexHull
 
@@ -56,7 +57,6 @@ class Polyhedron(ConvexSet):
             self._vertices = order_vertices_counter_clockwise(
                 VPolytope(self._h_polyhedron_in_space).vertices().T
             )
-            H, h = Polyhedron._reorder_A_b_by_vertices(H, h, self._vertices)
 
             self._h_polyhedron_in_space = HPolyhedron(H, h)
             self._H = H
@@ -71,9 +71,9 @@ class Polyhedron(ConvexSet):
             self._center = None
                 
         self._h_polyhedron = HPolyhedron(block_diag(*([H] * num_knot_points)), np.tile(h, num_knot_points))
-        print(f"self._h_polyhedron.A().shape: {self._h_polyhedron.A().shape}")
-        print(f"self._h_polyhedron.b().shape: {self._h_polyhedron.b().shape}")
         self._num_knot_points = num_knot_points
+        
+        self.rng = RandomGenerator()
 
     def create_nullspace_set(self):
         if self._h_polyhedron_in_space.IsEmpty():
@@ -109,12 +109,7 @@ class Polyhedron(ConvexSet):
 
         v_polytope = VPolytope(vertices.T)
         h_polyhedron = HPolyhedron(v_polytope)
-        if vertices.shape[1] == 2:
-            H, h = Polyhedron._reorder_A_b_by_vertices(
-                h_polyhedron.A(), h_polyhedron.b(), vertices
-            )
-        else:
-            H, h = h_polyhedron.A(), h_polyhedron.b()
+        H, h = h_polyhedron.A(), h_polyhedron.b()
 
         polyhedron = cls(H, h, should_compute_vertices=False, num_knot_points=num_knot_points)
         if polyhedron._vertices is None:
@@ -389,6 +384,8 @@ class Polyhedron(ConvexSet):
 
         i.e. the first row of A and the first element of b correspond to
         the line between the first and second vertices.
+        
+        This was previously used for contact planning (unused now).
         """
         # assert len(A) == len(vertices) == len(b)
         new_order = []
@@ -402,8 +399,27 @@ class Polyhedron(ConvexSet):
         assert len(new_order) == len(vertices), "Something went wrong"
         return A[new_order], b[new_order]
 
-    def get_samples(self, n_samples=100):
-        return self._nullspace_set.get_samples(n_samples)
+    def get_samples(self, use_nullspace_set=False, sample_in_space=True, n_samples=100):
+        if use_nullspace_set and self._nullspace_set is not None:
+            return self._nullspace_set.get_samples(n_samples)
+        else:
+            if sample_in_space:
+                samples = []
+                try:
+                    q_sample = self._h_polyhedron_in_space.UniformSample(self.rng)
+                    samples.append(q_sample)
+                    prev_sample = q_sample
+                    for _ in range(n_samples-1):
+                        q_sample = self._h_polyhedron_in_space.UniformSample(self.rng, prev_sample)
+                        prev_sample = q_sample
+                        samples.append(q_sample)
+                except (RuntimeError, ValueError) as e:
+                    chebyshev_center = self.set.ChebyshevCenter()
+                    logger.warn("Failed to sample convex set" f"\n{e}")
+                    return np.array([chebyshev_center])
+                return np.array(samples)
+            else:
+                return super().get_samples(n_samples)
 
     @property
     def dim(self):
