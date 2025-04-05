@@ -177,7 +177,6 @@ class GcsStar(SearchAlgorithm):
             if not self._allow_cycles and v in n.vertex_path:
                 continue
             
-            print(f"v: {v}")
             early_terminate_sol = self._explore_successor(n, v)
             if early_terminate_sol is not None:
                 return early_terminate_sol

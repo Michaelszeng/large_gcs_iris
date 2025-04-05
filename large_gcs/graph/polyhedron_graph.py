@@ -180,8 +180,6 @@ class PolyhedronGraph(Graph):
                             break
                     if not voxel_covered:
                         continue
-                    
-                    print(f"voxel: {other_voxel_name} is covered.")
                     covered_voxels.append(other_voxel_name)
                 
                 for voxel_name in covered_voxels:
@@ -204,10 +202,12 @@ class PolyhedronGraph(Graph):
             2. Add each voxel to the graph
             3. Add a path (and solve its convex restriction) ending at each of those voxels to queue
             """
+            print(f"Generating voxel successors for vertex: r{vertex_name}")
             # Generate voxels on boundary of current vertex
             # First, find axis-aligned bounding box of current region
             region = self.vertices[vertex_name].convex_set  # Polyhedron
             min_coords, max_coords = region.axis_aligned_bounding_box()
+            print(f"Region bounding box: min_coords: {min_coords}, max_coords: {max_coords}")
             # Inflate bounding box by 0.1*voxel_size in each dimension (to ensure voxels are not on the boundary of the region)
             min_coords -= [0.1 * self.default_voxel_size] * self.base_dim
             max_coords += [0.1 * self.default_voxel_size] * self.base_dim
@@ -228,14 +228,28 @@ class PolyhedronGraph(Graph):
             non_contained_voxels = []
             voxel_progs = []
             for voxel in voxels:
-                # Check if vertices of voxels are all contained in region (NOT full containment)
                 vtxs = voxel.get_vertices()  # base_dim x num_vertices
                 num_vtxs = vtxs.shape[1]
+                
+                # Check if all vertices of voxel are contained in current region (full containment)
                 if np.all(region.H @ vtxs <= np.tile(region.h, (num_vtxs, 1)).T):
+                    print(f"Voxel {voxel.center} is fully contained in current region.")
+                    continue
+                
+                # Check if all vertices of voxel are contained in any other region (full containment)
+                for other_region in self.vertices.values():
+                    if isinstance(other_region.convex_set, Polyhedron):
+                        fully_contained_in_other_region = False
+                        if np.all(other_region.convex_set.H @ vtxs <= np.tile(other_region.convex_set.h, (num_vtxs, 1)).T):
+                            fully_contained_in_other_region = True  
+                            print(f"Voxel {voxel.center} is fully contained in region.")
+                            break
+                if fully_contained_in_other_region:
                     continue
                 
                 # Check if voxel intersects with obstacle
                 if not self.voxel_collision_checker.check_voxel_collision_free(voxel):
+                    print(f"Voxel {voxel.center} intersects with obstacle.")
                     continue
                 
                 non_contained_voxels.append(voxel)
@@ -270,6 +284,8 @@ class PolyhedronGraph(Graph):
                     pass
                     # print(f"No intersection found for voxel with center: {voxel.center}")
             print(f"Time taken to solve voxels: {time.time() - start}")
+            
+            print(f"partially_contained_voxels: {list(map(lambda x: x.center, partially_contained_voxels))}")
             
             # Add voxel successors to neighbors
             for voxel in partially_contained_voxels:
@@ -716,7 +732,17 @@ class PolyhedronGraph(Graph):
                     self.path_text.remove()
                 
                 # Format the vertex path for display
-                path_str = ' → '.join(sol.vertex_path[:-1])
+                formatted_vertices = []
+                for vertex_name in sol.vertex_path[:-1]:  # Exclude the last vertex (which is the target)
+                    if vertex_name == "source":
+                        formatted_vertices.append(vertex_name)
+                    elif isinstance(self.vertices[vertex_name].convex_set, Voxel):
+                        # Prefix with 'v' for voxels
+                        formatted_vertices.append(f"v{vertex_name}")
+                    else:
+                        # Prefix with 'r' for regions
+                        formatted_vertices.append(f"r{vertex_name}")
+                path_str = ' → '.join(formatted_vertices)
                 self.path_text = self.animation_ax.text(
                     0.05, 0.95,  # Position in axes coordinates (5% from left, 95% from bottom)
                     f'Path: {path_str}',
