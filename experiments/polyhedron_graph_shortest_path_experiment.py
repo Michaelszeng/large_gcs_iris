@@ -44,14 +44,13 @@ def main(cfg: OmegaConf) -> None:
     logger.info(cfg)
     
     # 2D Test
-    # obstacles = [Polyhedron.from_vertices([[2,0],[0,2],[2,2]])]
-    # obstacles = [Polyhedron.from_vertices([[0.1,0.9],[0.9,0.1],[0.9,0.9]])]
-    obstacles = [Polyhedron.from_vertices([[0.9,0.1],[0.1,0.9],[0.9,0.9]])]
+    obstacles = [Polyhedron.from_vertices([[2,0],[0,2],[2,2]])]
+    # obstacles = [Polyhedron.from_vertices([[0.9,0.1],[0.1,0.9],[0.9,0.9]])]
     workspace = np.array([[-4, 4],    # workspace x-lim
                           [-4, 4]])   # workspace y-lim
     g = PolyhedronGraph(
         s = np.array([0, 0]),
-        t = np.array([2, 2]),
+        t = np.array([2.1, 2.1]),
         workspace = workspace,
         default_voxel_size = 1,
         should_add_gcs = True,

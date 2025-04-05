@@ -247,6 +247,11 @@ class PolyhedronGraph(Graph):
                 if fully_contained_in_other_region:
                     continue
                 
+                # Check if all vertices of voxel are in workspace
+                if not np.all(self.domain.A() @ vtxs <= np.tile(self.domain.b(), (num_vtxs, 1)).T):
+                    print(f"Voxel {voxel.center} is not in workspace.")
+                    continue
+                
                 # Check if voxel intersects with obstacle
                 if not self.voxel_collision_checker.check_voxel_collision_free(voxel):
                     print(f"Voxel {voxel.center} intersects with obstacle.")
