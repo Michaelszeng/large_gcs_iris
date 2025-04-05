@@ -309,32 +309,33 @@ class PolyhedronGraph(Graph):
         for neighbor_data in neighbors:
             self._generate_neighbor(*neighbor_data)
             
-            neighbor_voxel_name = neighbor_data[1]
+            neighbor_name = neighbor_data[1]
             
-            # Draw edges from source vertex if it is in the neighbor voxel
+            # Draw edges from source vertex if it is in the neighbor
             if neighbor_data[0] == self.source_name:
                 self.add_undirected_edge(
                     Edge(
                         u=self.source_name,
-                        v=neighbor_voxel_name,
-                        costs=self._create_single_edge_costs(self.source_name, neighbor_voxel_name),
-                        constraints=self._create_single_edge_constraints(self.source_name, neighbor_voxel_name),
+                        v=neighbor_name,
+                        costs=self._create_single_edge_costs(self.source_name, neighbor_name),
+                        constraints=self._create_single_edge_constraints(self.source_name, neighbor_name),
                     ),
                     should_add_to_gcs=self._should_add_gcs,
                 )
-            
-            # Draw edges to the target vertex if it is in the neighbor voxel
-            if self._does_vertex_have_possible_edge_to_target(neighbor_voxel_name):
-                # Directed edge to target
-                self.add_edge(
-                    Edge(
-                        u=neighbor_voxel_name,
-                        v=self.target_name,
-                        costs=self._create_single_edge_costs(neighbor_voxel_name, self.target_name),
-                        constraints=self._create_single_edge_constraints(neighbor_voxel_name, self.target_name),
-                    ),
-                    should_add_to_gcs=self._should_add_gcs,
-                )
+        
+        # Draw edge from newly generated region to the target vertex if the newly generated region contains the target
+        if vertex_name != "source" and self._does_vertex_have_possible_edge_to_target(vertex_name):
+            print(f"Adding edge from {vertex_name} to {self.target_name}")
+            # Directed edge to target
+            self.add_edge(
+                Edge(
+                    u=vertex_name,
+                    v=self.target_name,
+                    costs=self._create_single_edge_costs(vertex_name, self.target_name),
+                    constraints=self._create_single_edge_constraints(vertex_name, self.target_name),
+                ),
+                should_add_to_gcs=self._should_add_gcs,
+            )
                 
     def _generate_neighbor(
         self, u: str, v: str, is_v_in_vertices: bool, v_set: ConvexSet = None,
@@ -385,6 +386,9 @@ class PolyhedronGraph(Graph):
     
     def _does_vertex_have_possible_edge_to_target(self, vertex_name: str) -> bool:
         """Determine if we can add an edge to the target vertex."""
+        if isinstance(self.vertices[vertex_name].convex_set, Polyhedron):
+            print(f"Polyhedron {vertex_name} has edge to target??")
+            
         return self.vertices[vertex_name].convex_set.set_in_space.PointInSet(self.t)
         
     ############################################################################
