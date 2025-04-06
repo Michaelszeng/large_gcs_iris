@@ -27,7 +27,7 @@ from large_gcs.utils.hydra_utils import get_cfg_from_folder
 
 logger = logging.getLogger(__name__)
 
-@hydra.main(version_base=None, config_path="../config", config_name="voxel_graph_traj_opt")
+@hydra.main(version_base=None, config_path="../config", config_name="shortest_piecewise_linear_path")
 def main(cfg: OmegaConf) -> None:
     # Add log dir to config
     hydra_config = HydraConfig.get()
@@ -59,12 +59,12 @@ def main(cfg: OmegaConf) -> None:
     # )
     
     # 3D Test
-    obstacles = [Polyhedron.from_vertices([[0.9,0.1,-1],[0.1,0.9,-1],[0.9,0.9,-1],[0.9,0.1,1],[0.1,0.9,1],[0.9,0.9,1]])]
+    obstacles = [Polyhedron.from_vertices([[1,0,-1],[0,1,-1],[1,1,-1],[0,0,1],[1,0,1],[0,1,1]])]
     workspace = np.array([[-2.5, 2.5],    # workspace x-lim
                           [-2.5, 2.5],    # workspace y-lim
                           [-2.5, 2.5]])   # workspace z-lim
     g = PolyhedronGraph(
-        s = np.array([0, 0, 0]),
+        s = np.array([-1, -1, -1]),
         t = np.array([1.9, 1.9, 1.9]),
         workspace = workspace,
         default_voxel_size = 1,

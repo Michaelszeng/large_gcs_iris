@@ -26,7 +26,7 @@ from omegaconf import OmegaConf, open_dict
 from large_gcs.algorithms.search_algorithm import AlgVisParams, SearchAlgorithm
 from large_gcs.cost_estimators.cost_estimator import CostEstimator
 from large_gcs.domination_checkers.domination_checker import DominationChecker
-from large_gcs.graph.voxel_graph import VoxelGraph
+from large_gcs.graph.polyhedron_graph import PolyhedronGraph
 from large_gcs.geometry.voxel_collision_checker import VoxelSceneGraphCollisionChecker
 from large_gcs.graph.graph import ShortestPathSolution
 from large_gcs.geometry.polyhedron import Polyhedron
@@ -141,7 +141,7 @@ def main(cfg: OmegaConf) -> None:
     print(f"Workspace: {workspace}")  
     
     # 2D Test 
-    g = VoxelGraph(
+    g = PolyhedronGraph(
         s = np.array([0, 0]),
         t = np.array([-1, 1.7]),
         workspace = workspace,

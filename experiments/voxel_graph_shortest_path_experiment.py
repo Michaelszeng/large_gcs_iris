@@ -27,7 +27,7 @@ from large_gcs.utils.hydra_utils import get_cfg_from_folder
 
 logger = logging.getLogger(__name__)
 
-@hydra.main(version_base=None, config_path="../config", config_name="voxel_graph_traj_opt")
+@hydra.main(version_base=None, config_path="../config", config_name="shortest_piecewise_linear_path")
 def main(cfg: OmegaConf) -> None:
     # Add log dir to config
     hydra_config = HydraConfig.get()
