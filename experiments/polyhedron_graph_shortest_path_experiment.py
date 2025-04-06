@@ -43,34 +43,35 @@ def main(cfg: OmegaConf) -> None:
 
     logger.info(cfg)
     
-    # 2D Test
-    obstacles = [Polyhedron.from_vertices([[2,0],[0,2],[2,2]])]
-    # obstacles = [Polyhedron.from_vertices([[0.9,0.1],[0.1,0.9],[0.9,0.9]])]
-    workspace = np.array([[-4, 4],    # workspace x-lim
-                          [-4, 4]])   # workspace y-lim
+    # # 2D Test
+    # obstacles = [Polyhedron.from_vertices([[2,0],[0,2],[2,2]])]
+    # # obstacles = [Polyhedron.from_vertices([[0.9,0.1],[0.1,0.9],[0.9,0.9]])]
+    # workspace = np.array([[-4, 4],    # workspace x-lim
+    #                       [-4, 4]])   # workspace y-lim
+    # g = PolyhedronGraph(
+    #     s = np.array([0, 0]),
+    #     t = np.array([2.1, 2.1]),
+    #     workspace = workspace,
+    #     default_voxel_size = 1,
+    #     should_add_gcs = True,
+    #     const_edge_cost=cfg.const_edge_cost,
+    #     voxel_collision_checker=VoxelCollisionCheckerConvexObstacles(obstacles, workspace),
+    # )
+    
+    # 3D Test
+    obstacles = [Polyhedron.from_vertices([[0.9,0.1,-1],[0.1,0.9,-1],[0.9,0.9,-1],[0.9,0.1,1],[0.1,0.9,1],[0.9,0.9,1]])]
+    workspace = np.array([[-2.5, 2.5],    # workspace x-lim
+                          [-2.5, 2.5],    # workspace y-lim
+                          [-2.5, 2.5]])   # workspace z-lim
     g = PolyhedronGraph(
-        s = np.array([0, 0]),
-        t = np.array([2.1, 2.1]),
+        s = np.array([0, 0, 0]),
+        t = np.array([1.9, 1.9, 1.9]),
         workspace = workspace,
         default_voxel_size = 1,
         should_add_gcs = True,
         const_edge_cost=cfg.const_edge_cost,
         voxel_collision_checker=VoxelCollisionCheckerConvexObstacles(obstacles, workspace),
     )
-    
-    # 3D Test
-    # obstacles = [Polyhedron.from_vertices([[0.9,0.1,-1],[0.1,0.9,-1],[0.9,0.9,-1],[0.9,0.1,1],[0.1,0.9,1],[0.9,0.9,1]])]
-    # g = PolyhedronGraph(
-    #     s = np.array([0, 0, 0]),
-    #     t = np.array([2, 2, 2]),
-    #     workspace = np.array([[-4,  4],    # workspace x-lim
-    #                           [-4,  4],    # workspace y-lim
-    #                           [-4,  4]]),  # workspace z-lim
-    #     default_voxel_size = 1,
-    #     should_add_gcs = True,
-    #     const_edge_cost=cfg.const_edge_cost,
-    #     voxel_collision_checker=VoxelCollisionCheckerConvexObstacles(obstacles),
-    # )
     
     cost_estimator: CostEstimator = instantiate(
         cfg.cost_estimator, graph=g, add_const_cost=cfg.should_add_const_edge_cost, const_cost=cfg.const_edge_cost

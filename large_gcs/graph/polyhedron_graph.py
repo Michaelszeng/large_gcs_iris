@@ -445,6 +445,86 @@ class PolyhedronGraph(Graph):
     ############################################################################
     ### PLOTTING ###
     ############################################################################
+    def plot_voxel(self, vertex, fill=False, facecolor='yellow', alpha=0.3):
+        if self.base_dim == 2:
+            center = vertex.convex_set.center
+            size = vertex.convex_set.size
+            if fill:
+                rect = plt.Rectangle(
+                    center - size / 2, size, size,
+                    fill=fill, facecolor=facecolor, alpha=alpha, edgecolor='magenta', linewidth=1
+                )
+            else:
+                rect = plt.Rectangle(
+                    center - size / 2, size, size,
+                    fill=fill, edgecolor='magenta', linewidth=1
+                )
+            return rect
+        elif self.base_dim == 3:
+            center = vertex.convex_set.center
+            size = vertex.convex_set.size
+            r = size / 2
+            
+            # Create vertices for the 6 faces of the cube
+            faces = []
+            # Front and back faces
+            for z in [center[2]-r, center[2]+r]:
+                face = np.array([
+                    [center[0]-r, center[1]-r, z],
+                    [center[0]+r, center[1]-r, z],
+                    [center[0]+r, center[1]+r, z],
+                    [center[0]-r, center[1]+r, z]
+                ])
+                faces.append(face)
+            # Left and right faces
+            for x in [center[0]-r, center[0]+r]:
+                face = np.array([
+                    [x, center[1]-r, center[2]-r],
+                    [x, center[1]+r, center[2]-r],
+                    [x, center[1]+r, center[2]+r],
+                    [x, center[1]-r, center[2]+r]
+                ])
+                faces.append(face)
+            # Top and bottom faces
+            for y in [center[1]-r, center[1]+r]:
+                face = np.array([
+                    [center[0]-r, y, center[2]-r],
+                    [center[0]+r, y, center[2]-r],
+                    [center[0]+r, y, center[2]+r],
+                    [center[0]-r, y, center[2]+r]
+                ])
+                faces.append(face)
+                
+            # Create the collection of faces
+            if not fill:
+                alpha = 0
+                
+            cube = Poly3DCollection(
+                faces,
+                facecolors=facecolor,
+                alpha=alpha,
+                edgecolors='black'
+            )
+            return cube
+            
+        
+    def plot_polyhedron(self, vertex, facecolor='red', alpha=0.2):
+        if self.base_dim == 2:
+            vertices = vertex.convex_set.vertices
+            polygon_patch = plt.Polygon(vertices, closed=True, facecolor=facecolor, alpha=alpha, edgecolor='magenta', linewidth=1)
+            return polygon_patch
+        elif self.base_dim == 3:
+            vertices = vertex.convex_set.vertices
+            hull = ConvexHull(vertices)
+            faces = [vertices[s] for s in hull.simplices]
+            polygon_patch_3d = Poly3DCollection(
+                faces,
+                alpha=alpha,           # Transparency
+                facecolors=facecolor,  # Fill color
+                linewidths=1
+            )
+            return polygon_patch_3d
+        
     def plot(
         self,
         ax: Optional[plt.Axes] = None,
@@ -487,14 +567,29 @@ class PolyhedronGraph(Graph):
                     x = [self.workspace[0][0], self.workspace[0][1]]
                     y = [self.workspace[1][0], self.workspace[1][1]]
                     z = [self.workspace[2][0], self.workspace[2][1]]
+                    
                     # Create the vertices of the box
                     vertices = np.array(list(product(x, y, z)))
-                    edges = [
-                        [vertices[i], vertices[j]] for i, j in combinations(range(8), 2)
-                        if np.sum(np.abs(vertices[i] - vertices[j])) == (x[1] - x[0]) + (y[1] - y[0]) + (z[1] - z[0])
+                    
+                    # Define the 12 edges of a cube by their vertex indices
+                    # Each edge connects two vertices that differ in exactly one coordinate
+                    edge_indices = [
+                        # Bottom face edges (z=min)
+                        (0, 1), (1, 3), (3, 2), (2, 0),
+                        # Top face edges (z=max)
+                        (4, 5), (5, 7), (7, 6), (6, 4),
+                        # Vertical edges connecting top and bottom faces
+                        (0, 4), (1, 5), (2, 6), (3, 7)
                     ]
-                    for edge in edges:
-                        ax.plot3D(*zip(*edge), color='black', linewidth=2)
+                    
+                    # Plot each edge
+                    for i, j in edge_indices:
+                        ax.plot3D(
+                            [vertices[i][0], vertices[j][0]],
+                            [vertices[i][1], vertices[j][1]],
+                            [vertices[i][2], vertices[j][2]],
+                            color='black', linewidth=2
+                        )
                         
             # Plot source and target
             if self.base_dim == 2:
@@ -531,20 +626,13 @@ class PolyhedronGraph(Graph):
                             )
                         elif self.base_dim == 3:
                             hull = ConvexHull(obstacle_vertices)
-                            
-                            # Each "simplex" in the hull is a triangle (defined by 3 vertices)
                             faces = [obstacle_vertices[s] for s in hull.simplices]
-                            
-                            # Create a Poly3DCollection (triangular faces) for the hull
                             hull_collection = Poly3DCollection(
                                 faces,
                                 alpha=0.5,          # Transparency
                                 facecolors='black', # Fill color
-                                edgecolors='black', # Edge color
                                 linewidths=1
                             )
-                            
-                            # Add this 3D collection of triangles to the Axes
                             ax.add_collection3d(hull_collection)
             
             # Scene Graph Obstacles
@@ -649,48 +737,22 @@ class PolyhedronGraph(Graph):
                 if isinstance(vertex.convex_set, Voxel):
                     if vertex_name not in self.uncovered_voxels:
                         continue
-                    center = vertex.convex_set.center
-                    size = vertex.convex_set.size
-                    if self.base_dim == 2:
-                        rect = plt.Rectangle(
-                            center - size / 2, size, size,
-                            fill=False, edgecolor='magenta', linewidth=1
-                        )
-                        self.animation_ax.add_patch(rect)
-                        self.voxel_patches.append(rect)
+                    rect = self.plot_voxel(vertex, fill=False)
+                    self.animation_ax.add_patch(rect)
+                    self.voxel_patches.append(rect)
                 elif isinstance(vertex.convex_set, Polyhedron):
-                    vertices = vertex.convex_set.vertices
-                    polygon_patch = plt.Polygon(vertices, closed=True, facecolor='red', alpha=0.2, edgecolor='magenta', linewidth=1)
+                    polygon_patch = self.plot_polyhedron(vertex, facecolor='red', alpha=0.2)
                     self.animation_ax.add_patch(polygon_patch)
                     self.voxel_patches.append(polygon_patch)
             elif self.base_dim == 3:
                 if isinstance(vertex.convex_set, Voxel):
                     if vertex_name not in self.uncovered_voxels:
                         continue
-                    center = vertex.convex_set.center
-                    size = vertex.convex_set.size
-                    # Create the 8 vertices of the cube
-                    r = size / 2
-                    cube_vertices = np.array(list(product([center[0]-r, center[0]+r],
-                                                            [center[1]-r, center[1]+r],
-                                                            [center[2]-r, center[2]+r])))
-                
-                    # Define the 12 edges of the cube
-                    edges = []
-                    for i, j in combinations(range(8), 2):
-                        if np.sum(np.abs(cube_vertices[i] - cube_vertices[j])) == size:
-                            line, = self.animation_ax.plot3D(
-                                [cube_vertices[i,0], cube_vertices[j,0]],
-                                [cube_vertices[i,1], cube_vertices[j,1]],
-                                [cube_vertices[i,2], cube_vertices[j,2]],
-                                color='magenta', linewidth=1
-                            )
-                            edges.append(line)
-                    self.voxel_patches.extend(edges)
+                    cube = self.plot_voxel(vertex, fill=False)
+                    self.animation_ax.add_collection3d(cube)
+                    self.voxel_patches.append(cube)
                 elif isinstance(vertex.convex_set, Polyhedron):
-                    vertices = vertex.convex_set.vertices
-                    vertices_poly3d = [[vertices[j] for j in range(len(vertices))]]
-                    polygon_patch_3d = Poly3DCollection(vertices_poly3d, facecolor='red', alpha=0.2, edgecolor='magenta', linewidths=1)
+                    polygon_patch_3d = self.plot_polyhedron(vertex, facecolor='red', alpha=0.2)
                     self.animation_ax.add_collection3d(polygon_patch_3d)
                     self.voxel_patches.append(polygon_patch_3d)
         
@@ -708,6 +770,22 @@ class PolyhedronGraph(Graph):
             
             trajectory = np.vstack(points)
             
+            # Generate vertex path text
+            # Remove old text annotation if it exists
+            if hasattr(self, 'path_text') and self.path_text in self.animation_ax.texts:
+                self.path_text.remove()
+            
+            # Format the vertex path for display
+            formatted_vertices = []
+            for vertex_name in sol.vertex_path[:-1]:  # Exclude the last vertex (which is the target)
+                if vertex_name == "source":
+                    formatted_vertices.append(vertex_name)
+                elif isinstance(self.vertices[vertex_name].convex_set, Voxel):
+                    formatted_vertices.append(f"v{vertex_name}")  # Prefix with 'v' for voxels
+                else:
+                    formatted_vertices.append(f"r{vertex_name}")  # Prefix with 'r' for regions
+            path_str = ' → '.join(formatted_vertices)
+            
             if self.base_dim == 2:
                 # Set trajectory points
                 # Main path (all but last segment)
@@ -719,39 +797,15 @@ class PolyhedronGraph(Graph):
                 for vertex_name in sol.vertex_path:
                     if vertex_name not in ["source", "target"]:
                         if isinstance(self.vertices[vertex_name].convex_set, Voxel):
-                            vertex = self.vertices[vertex_name]
-                            center = vertex.convex_set.center
-                            size = vertex.convex_set.size
-                            rect = plt.Rectangle(
-                                center - size / 2, size, size,
-                                fill=True, facecolor='yellow', alpha=0.3,
-                                edgecolor='magenta', linewidth=1
-                            )
+                            rect = self.plot_voxel(self.vertices[vertex_name], fill=True, facecolor='yellow', alpha=0.3)
                             self.animation_ax.add_patch(rect)
                             self.voxel_patches.append(rect)
                         elif isinstance(self.vertices[vertex_name].convex_set, Polyhedron):
-                            vertices = self.vertices[vertex_name].convex_set.vertices
-                            polygon_patch = plt.Polygon(vertices, closed=True, facecolor='yellow', alpha=0.3, edgecolor='magenta', linewidth=1)
+                            polygon_patch = self.plot_polyhedron(self.vertices[vertex_name], facecolor='yellow', alpha=0.3)
                             self.animation_ax.add_patch(polygon_patch)
                             self.voxel_patches.append(polygon_patch)
                 
                 # Add vertex path text
-                # Remove old text annotation if it exists
-                if hasattr(self, 'path_text') and self.path_text in self.animation_ax.texts:
-                    self.path_text.remove()
-                
-                # Format the vertex path for display
-                formatted_vertices = []
-                for vertex_name in sol.vertex_path[:-1]:  # Exclude the last vertex (which is the target)
-                    if vertex_name == "source":
-                        formatted_vertices.append(vertex_name)
-                    elif isinstance(self.vertices[vertex_name].convex_set, Voxel):
-                        # Prefix with 'v' for voxels
-                        formatted_vertices.append(f"v{vertex_name}")
-                    else:
-                        # Prefix with 'r' for regions
-                        formatted_vertices.append(f"r{vertex_name}")
-                path_str = ' → '.join(formatted_vertices)
                 self.path_text = self.animation_ax.text(
                     0.05, 0.95,  # Position in axes coordinates (5% from left, 95% from bottom)
                     f'Path: {path_str}',
@@ -775,56 +829,25 @@ class PolyhedronGraph(Graph):
                 for vertex_name in sol.vertex_path:
                     if vertex_name not in ["source", "target"]:
                         if isinstance(self.vertices[vertex_name].convex_set, Voxel):
-                            vertex = self.vertices[vertex_name]
-                            center = vertex.convex_set.center
-                            size = vertex.convex_set.size
-                            r = size / 2
-                            
-                            # Create vertices for the 6 faces of the cube
-                            faces = []
-                            # Front and back faces
-                            for z in [center[2]-r, center[2]+r]:
-                                face = np.array([
-                                    [center[0]-r, center[1]-r, z],
-                                    [center[0]+r, center[1]-r, z],
-                                    [center[0]+r, center[1]+r, z],
-                                    [center[0]-r, center[1]+r, z]
-                                ])
-                                faces.append(face)
-                            # Left and right faces
-                            for x in [center[0]-r, center[0]+r]:
-                                face = np.array([
-                                    [x, center[1]-r, center[2]-r],
-                                    [x, center[1]+r, center[2]-r],
-                                    [x, center[1]+r, center[2]+r],
-                                    [x, center[1]-r, center[2]+r]
-                                ])
-                                faces.append(face)
-                            # Top and bottom faces
-                            for y in [center[1]-r, center[1]+r]:
-                                face = np.array([
-                                    [center[0]-r, y, center[2]-r],
-                                    [center[0]+r, y, center[2]-r],
-                                    [center[0]+r, y, center[2]+r],
-                                    [center[0]-r, y, center[2]+r]
-                                ])
-                                faces.append(face)
-                                
-                            # Create the collection of faces
-                            cube = Poly3DCollection(
-                                faces,
-                                facecolors='yellow',
-                                alpha=0.3,
-                                edgecolors='black'
-                            )
+                            cube = self.plot_voxel(self.vertices[vertex_name], fill=True, facecolor='yellow', alpha=0.3)
                             self.animation_ax.add_collection3d(cube)
                             self.voxel_patches.append(cube)
                         elif isinstance(self.vertices[vertex_name].convex_set, Polyhedron):
-                            vertices = vertices[vertex_name].convex_set.vertices
-                            vertices_poly3d = [[vertices[j] for j in range(len(vertices))]]
-                            polygon_patch_3d = Poly3DCollection(vertices_poly3d, facecolor='yellow', alpha=0.3, edgecolor='black', linewidths=1)
+                            polygon_patch_3d = self.plot_polyhedron(self.vertices[vertex_name], facecolor='yellow', alpha=0.3)
                             self.animation_ax.add_collection3d(polygon_patch_3d)
                             self.voxel_patches.append(polygon_patch_3d)
+                
+                # Add vertex path text
+                self.path_text = self.animation_ax.text2D(
+                    0.05, 0.95,
+                    f'Path: {path_str}',
+                    transform=self.animation_ax.transAxes,
+                    verticalalignment='top',
+                    bbox=dict(facecolor='white', alpha=0.7, edgecolor='none'),
+                    fontsize=8,
+                    wrap=True
+                )
+                self.voxel_patches.append(self.path_text)  # Add to patches so it gets cleaned up
             
         
         # Set the limits of the axes to be 10% larger than the workspace
@@ -861,7 +884,7 @@ class PolyhedronGraph(Graph):
         plt.show(block=False)  # Show the figure but don't block
         plt.pause(0.1)  # Small pause to ensure window appears
         
-    def update_animation(self, sol: Optional[ShortestPathSolution] = None):
+    def update_animation(self, sol: Optional[ShortestPathSolution] = None, block: bool = False):
         """Update the animation with new voxels and optionally a new solution."""
         if not hasattr(self, 'animation_fig'):
             self.init_animation()
@@ -871,6 +894,9 @@ class PolyhedronGraph(Graph):
         # Redraw
         self.animation_fig.canvas.draw()
         self.animation_fig.canvas.flush_events()
+        
+        if block:
+            plt.show(block=True)
         
     ### SERIALIZATION METHODS ###
 

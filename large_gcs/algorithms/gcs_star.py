@@ -135,6 +135,11 @@ class GcsStar(SearchAlgorithm):
         )
         # Call post-solve again in case other solutions were found after this was first visited.
         self._graph._post_solve(sol)
+        
+        # Keep final solution plot open
+        if self._vis_params.animate:
+            self._graph.update_animation(block=True)
+        
         return sol
 
     @profile_method

@@ -69,16 +69,17 @@ class VoxelCollisionCheckerConvexObstacles(VoxelCollisionChecker):
                         <parent link="world"/>
                         <child link="for_joint"/>
                     </joint>
+                    <link name="for_joint2"/>
                     <joint name="y" type="prismatic">
                         <axis xyz="0 1 0"/>
                         <limit lower="{workspace[1, 0]}" upper="{workspace[1, 1]}"/>
                         <parent link="for_joint"/>
-                        <child link="movable"/>
+                        <child link="for_joint2"/>
                     </joint>
                     <joint name="z" type="prismatic">
                         <axis xyz="0 0 1"/>
                         <limit lower="{workspace[2, 0]}" upper="{workspace[2, 1]}"/>
-                        <parent link="for_joint"/>
+                        <parent link="for_joint2"/>
                         <child link="movable"/>
                     </joint>
                 </robot>"""
