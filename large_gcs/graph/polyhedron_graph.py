@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import matplotlib.animation as animation
 from scipy.spatial import ConvexHull
+from typing import Set
 import numpy as np
 from pydrake.all import (
     Constraint, 
@@ -55,6 +56,30 @@ from large_gcs.geometry.utils import ik
 
 logger = logging.getLogger(__name__)
 
+@dataclass
+class UncoveredVoxels:
+    """
+    Help keep track of Voxel names (str) and Voxel objects that are still 
+    "active" (i.e. not fully contained in a region).
+    """
+    map: Dict[str, Voxel]
+    voxel_centers: Set[bytes]
+    
+    def __init__(self):
+        self.map = {}
+        self.voxel_centers = set()
+    
+    def remove(self, voxel_name: str):
+        voxel = self.map.pop(voxel_name)
+        self.voxel_centers.remove(voxel.center.tobytes())
+        
+    def add(self, voxel_name: str, voxel: Voxel):
+        self.map[voxel_name] = voxel
+        self.voxel_centers.add(voxel.center.tobytes())
+        
+    def __contains__(self, voxel: Voxel) -> bool:
+        assert isinstance(voxel, Voxel), f"is type {type(voxel)}, should be Voxel"
+        return voxel.center.tobytes() in self.voxel_centers
 
 class PolyhedronGraph(Graph):
     def __init__(
@@ -102,7 +127,7 @@ class PolyhedronGraph(Graph):
         
         self.num_vertices = 0  # this var should only be modified by calls to get_new_vertex_name; it is only used for naming new reigons
         
-        self.uncovered_voxels = set()  # Set of Voxel names (str); keep track of voxels that are not fully contained in a region
+        self.uncovered_voxels = UncoveredVoxels()  # Keep track of Voxel names (str) and Voxel objects that are not fully contained in a region
     
         sets = [Point(s), Point(t)]
         # Add convex sets to graph (Need to do this before generating edges)
@@ -149,7 +174,7 @@ class PolyhedronGraph(Graph):
                 5. Continue in the instance(self.vertices[vertex_name].convex_set, Polyhedron) case below (now that the vertex contains a region)
                 """
                 voxel = self.vertices[vertex_name].convex_set
-                if vertex_name not in self.uncovered_voxels:  # i.e. voxel is covered by a region
+                if vertex_name not in self.uncovered_voxels.map:  # i.e. voxel is covered by a region
                     return
                 
                 # Inflate a new region around the voxel
@@ -179,10 +204,10 @@ class PolyhedronGraph(Graph):
                 # 1. remove those voxels from `self.uncovered_voxels`
                 # 2. add edges between new region and that covered voxel's parent region
                 covered_voxels = []
-                for other_voxel_name in self.uncovered_voxels:
+                for other_voxel_name, other_voxel in self.uncovered_voxels.map.items():
                     # Check if all corners of other_voxel are in region
                     voxel_covered = True
-                    for vtx in self.vertices[other_voxel_name].convex_set.get_vertices().T:
+                    for vtx in other_voxel.get_vertices().T:
                         if not region.PointInSet(vtx):
                             voxel_covered = False
                             break
@@ -381,7 +406,7 @@ class PolyhedronGraph(Graph):
                 ),
                 should_add_to_gcs=self._should_add_gcs,
             )
-            self.uncovered_voxels.add(v)
+            self.uncovered_voxels.add(v, v_set)
         
         
         # If v is a polyhedron, add edge from v to intersecting neighbors given in v_neighbors
@@ -745,7 +770,7 @@ class PolyhedronGraph(Graph):
         for vertex_name, vertex in self.vertices.items():
             if self.base_dim == 2:
                 if isinstance(vertex.convex_set, Voxel):
-                    if vertex_name not in self.uncovered_voxels:
+                    if vertex_name not in self.uncovered_voxels.map:
                         continue
                     rect = self.plot_voxel(vertex, fill=False)
                     self.animation_ax.add_patch(rect)
@@ -756,7 +781,7 @@ class PolyhedronGraph(Graph):
                     self.voxel_patches.append(polygon_patch)
             elif self.base_dim == 3:
                 if isinstance(vertex.convex_set, Voxel):
-                    if vertex_name not in self.uncovered_voxels:
+                    if vertex_name not in self.uncovered_voxels.map:
                         continue
                     cube = self.plot_voxel(vertex, fill=False)
                     self.animation_ax.add_collection3d(cube)

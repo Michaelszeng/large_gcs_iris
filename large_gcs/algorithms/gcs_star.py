@@ -150,7 +150,7 @@ class GcsStar(SearchAlgorithm):
         
         # Janky way to skip covered voxels in the PolyhedronGraph "Best Voxel Inflation" algorithm
         if isinstance(self._graph, PolyhedronGraph):
-            if isinstance(self._graph.vertices[n.vertex_name].convex_set, Voxel) and n.vertex_name not in self._graph.uncovered_voxels:  # i.e. node ends at a covered voxel
+            if isinstance(self._graph.vertices[n.vertex_name].convex_set, Voxel) and n.vertex_name not in self._graph.uncovered_voxels.map:  # i.e. node ends at a covered voxel
                 print(f"Skipping node popped from Q because it ends at a covered voxel: {n.vertex_name}")
                 return
         

@@ -48,15 +48,15 @@ class SetSamples:
         vertex_names = node.vertex_path
         edge_names = node.edge_path
         
-        # gcs vertices and edges based on search node
-        vertices = [graph.vertices[name].gcs_vertex for name in vertex_names]
-        edges = [graph.edges[edge].gcs_edge for edge in edge_names]
+        # vertices and edges in the path of the search node
+        vertices = [graph.vertices[name] for name in vertex_names]
+        edges = [graph.edges[edge] for edge in edge_names]
 
         prog = MathematicalProgram()
         
         # Name the vertices by index since cycles are allowed otherwise might get duplicate names.
         vertex_vars = [
-            prog.NewContinuousVariables(v.ambient_dimension(), name=f"v{v_idx}_vars")
+            prog.NewContinuousVariables(v.convex_set.set.ambient_dimension(), name=f"v{v_idx}_vars")
             for v_idx, v in enumerate(vertices)
         ]
         sample_vars = vertex_vars[-1][-graph.base_dim:]  # i.e. the last knot point
@@ -65,16 +65,14 @@ class SetSamples:
         prog.AddCost((sample_vars - sample).dot(sample_vars - sample))
         
         # Vertex Constraints
-        for i, (v, x) in enumerate(zip(vertices, vertex_vars)):
-            v.set().AddPointInSetConstraints(prog, x)  # containment in convex set            
-            for binding in v.GetConstraints():  # other constraints on the vertex
-                constraint = binding.evaluator()
+        for (v, x) in zip(vertices, vertex_vars):
+            v.convex_set.set.AddPointInSetConstraints(prog, x)  # containment in convex set
+            for constraint in v.constraints:  # other constraints on the vertex
                 prog.AddConstraint(constraint, x)
 
         # Edge Constraints
         for idx, (e, e_name) in enumerate(zip(edges, edge_names)):
-            for binding in e.GetConstraints():
-                constraint = binding.evaluator()
+            for constraint in e.constraints:
                 u_idx, v_idx = idx, idx + 1
                 variables = np.hstack((vertex_vars[u_idx], vertex_vars[v_idx]))
                 prog.AddConstraint(constraint, variables)
