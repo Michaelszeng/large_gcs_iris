@@ -133,3 +133,11 @@ class Voxel(ConvexSet):
     def parent_region_name(self):
         """Parent region of the voxel"""
         return self._parent_region_name
+    
+    def __eq__(self, other):
+        """
+        Two voxels are considered equal if they have the same center (within numerical precision).
+        """
+        if not isinstance(other, Voxel):
+            return False
+        return np.all(np.isclose(self.center, other.center))

@@ -490,47 +490,6 @@ class Graph:
 
         return sol
 
-    def solve_convex_restrictions(
-        self,
-        active_edge_keys: List[List[str]],
-    ) -> List[ShortestPathSolution]:
-        """Solve multiple convex restrictions.
-
-        Note that to use this, have to use Drake built from this source: https://github.com/shaoyuancc/drake/tree/parallelize-convex-restrictions.
-        This is used in generating the lower bound graph.
-        """
-
-        paths = [
-            [self.edges[edge_key] for edge_key in path] for path in active_edge_keys
-        ]
-        gcs_paths = [[edge.gcs_edge for edge in path] for path in paths]
-
-        all_results: List[MathematicalProgramResult] = (
-            self._gcs.SolveConvexRestrictions(
-                active_edges=gcs_paths, parallelism=Parallelism(True)
-            )
-        )
-
-        sols = []
-        for e_path, result in zip(paths, all_results):
-            v_path = self._convert_conv_res_edges_to_vertex_path(e_path)
-            a_path = [
-                result.GetSolution(self.vertices[v].gcs_vertex.x()) for v in v_path
-            ]
-
-            sols.append(
-                ShortestPathSolution(
-                    result.is_success(),
-                    result.get_optimal_cost(),
-                    result.get_solver_details().optimizer_time,
-                    v_path,
-                    a_path,
-                    None,
-                    None,
-                )
-            )
-        return sols
-
     def _post_solve(self, sol: ShortestPathSolution):
         """Optional post solve hook for subclasses. Unimplemented here."""
 
@@ -587,6 +546,10 @@ class Graph:
         )
 
     def _parse_result(self, result: MathematicalProgramResult) -> ShortestPathSolution:
+        """
+        Creates ShortestPathSolution object from the result of a GCS solve (not
+        the convex restriction).
+        """
         cost = result.get_optimal_cost()
         time = result.get_solver_details().optimizer_time
         vertex_path = []

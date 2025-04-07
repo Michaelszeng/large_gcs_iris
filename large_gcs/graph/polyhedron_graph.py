@@ -74,9 +74,8 @@ class PolyhedronGraph(Graph):
         Graph.__init__(self, workspace=workspace)
         assert self.workspace is not None, "Must specify workspace"
         
-        # self.meshcat = meshcat
-        # self.plant = plant
-        # self.plant_context = plant_context
+        self.plt = plt  # make accessible to gcs_star.py
+        
         self.s = s
         self.t = t
         self.workspace = workspace
@@ -145,6 +144,8 @@ class PolyhedronGraph(Graph):
                 3. Switch the vertices[vertex_name] from containing the voxel to containing the new region
                 4. For `other_voxel` that is in `self.uncovered_voxels`:
                     if `other_voxel` is fully-contained in new region: remove from `self.uncovered_voxels`
+                    then add edge between that voxel's parent region and the new region 
+                    (this guarantees at least 1 edge is drawn to any newly generated region, since the new region is guaranteed to cover the voxel it was seeded with)
                 5. Continue in the instance(self.vertices[vertex_name].convex_set, Polyhedron) case below (now that the vertex contains a region)
                 """
                 voxel = self.vertices[vertex_name].convex_set
@@ -161,8 +162,15 @@ class PolyhedronGraph(Graph):
                     return
                 polyhedron = Polyhedron.from_drake_hpoly(region, should_compute_vertices=True if self.base_dim in [2, 3] else False, num_knot_points=self.num_knot_points)  # Compute vertices for 2D/3D visualization
                 
-                # Swap the voxel in the graph with the new region
-                self.vertices[vertex_name].convex_set = polyhedron  # Replace voxel with region
+                # Replace the voxel vertex in the graph with a vertex containing the new region (the new vertex retains the same name, costs, constraints, etc. just a different convex set)
+                # Note that it's necessary to explicitly add the new vertex and remove the old vertex; it's not possible to mutate the old vertex's gcs_vertex's convex set in place
+                vertex_copy = self.vertices[vertex_name]
+                edge_copies = self.incoming_edges(vertex_name) + self.outgoing_edges(vertex_name)
+                self.remove_vertex(vertex_name)  # Must remove old vertex before adding new vertex (with the same name)
+                # Removing the vertex deletes the GCS vertex and edges too, so we don't have to worry about conflicts with the new vertex and edges
+                self.add_vertex(Vertex(convex_set=polyhedron, costs=vertex_copy.costs, constraints=vertex_copy.constraints), name=vertex_name, should_add_to_gcs=True)
+                for edge in edge_copies:  # The edges operate by vertex name, so reusing these edges is fine.
+                    self.add_edge(edge)
                 
                 # Remove the voxel from `self.uncovered_voxels`
                 self.uncovered_voxels.remove(vertex_name)
@@ -198,19 +206,17 @@ class PolyhedronGraph(Graph):
             """
             Now, handle generation of voxel successors of polyhedron
             
-            1. Discretize boundary of polytope into partially-contained voxels (that are also not fully contained in any other region)
+            1. Discretize boundary of polytope into partially-contained voxels (that are also not fully contained in any other region, and that don't already exist (in `self.uncovered_voxels`))
             2. Add each voxel to the graph
             3. Add a path (and solve its convex restriction) ending at each of those voxels to queue
             """
-            print(f"Generating voxel successors for vertex: r{vertex_name}")
             # Generate voxels on boundary of current vertex
             # First, find axis-aligned bounding box of current region
             region = self.vertices[vertex_name].convex_set  # Polyhedron
             min_coords, max_coords = region.axis_aligned_bounding_box()
-            print(f"Region bounding box: min_coords: {min_coords}, max_coords: {max_coords}")
-            # Inflate bounding box by 0.1*voxel_size in each dimension (to ensure voxels are not on the boundary of the region)
-            min_coords -= [0.1 * self.default_voxel_size] * self.base_dim
-            max_coords += [0.1 * self.default_voxel_size] * self.base_dim
+            # Round min_coords down to the nearest voxel edge and max_coords up to the nearest voxel edge
+            min_coords = (np.floor((min_coords - 0.5 * self.default_voxel_size) / self.default_voxel_size) * self.default_voxel_size) + 0.5 * self.default_voxel_size
+            max_coords = (np.ceil((max_coords - 0.5 * self.default_voxel_size) / self.default_voxel_size) * self.default_voxel_size) + 0.5 * self.default_voxel_size
             
             # Generate voxels within bounding box
             voxels = []
@@ -221,7 +227,10 @@ class PolyhedronGraph(Graph):
                 center = min_coords + (np.array(idx) + 0.5) * self.default_voxel_size
                 if center.shape != min_coords.shape:  # Ensure correct dimensionality
                     center = center[:len(min_coords)]
-                voxels.append(Voxel(center, self.default_voxel_size, self.num_knot_points, parent_region_name=vertex_name))
+                new_voxel = Voxel(center, self.default_voxel_size, self.num_knot_points, parent_region_name=vertex_name)
+                if new_voxel in self.uncovered_voxels:  # Voxels are considered equal if they have the same center
+                    continue
+                voxels.append(new_voxel)
                 
             # Check partial containment of voxels
             start = time.time()
@@ -233,7 +242,7 @@ class PolyhedronGraph(Graph):
                 
                 # Check if all vertices of voxel are contained in current region (full containment)
                 if np.all(region.H @ vtxs <= np.tile(region.h, (num_vtxs, 1)).T):
-                    print(f"Voxel {voxel.center} is fully contained in current region.")
+                    # print(f"Voxel {voxel.center} is fully contained in current region.")
                     continue
                 
                 # Check if all vertices of voxel are contained in any other region (full containment)
@@ -242,19 +251,19 @@ class PolyhedronGraph(Graph):
                         fully_contained_in_other_region = False
                         if np.all(other_region.convex_set.H @ vtxs <= np.tile(other_region.convex_set.h, (num_vtxs, 1)).T):
                             fully_contained_in_other_region = True  
-                            print(f"Voxel {voxel.center} is fully contained in region.")
+                            # print(f"Voxel {voxel.center} is fully contained in region.")
                             break
                 if fully_contained_in_other_region:
                     continue
                 
                 # Check if all vertices of voxel are in workspace
                 if not np.all(self.domain.A() @ vtxs <= np.tile(self.domain.b(), (num_vtxs, 1)).T):
-                    print(f"Voxel {voxel.center} is not in workspace.")
+                    # print(f"Voxel {voxel.center} is not in workspace.")
                     continue
                 
                 # Check if voxel intersects with obstacle
                 if not self.voxel_collision_checker.check_voxel_collision_free(voxel):
-                    print(f"Voxel {voxel.center} intersects with obstacle.")
+                    # print(f"Voxel {voxel.center} intersects with obstacle.")
                     continue
                 
                 non_contained_voxels.append(voxel)
@@ -663,14 +672,15 @@ class PolyhedronGraph(Graph):
                         label='In Collision',
                     )
                 elif self.base_dim == 3:
-                    ax.scatter(
-                        collision_points[:, 0], 
-                        collision_points[:, 1], 
-                        collision_points[:, 2],
-                        color='black', 
-                        s=10, 
-                        label='In Collision'
-                    )
+                    pass  # plotting obstacle points makes it impossible to see anything else
+                    # ax.scatter(
+                    #     collision_points[:, 0], 
+                    #     collision_points[:, 1], 
+                    #     collision_points[:, 2],
+                    #     color='black', 
+                    #     s=10, 
+                    #     label='In Collision'
+                    # )
             
             # Create line objects for the path that we'll update
             # One line object for the main path, one for the shortcut edge (which will be red instead of blue)

@@ -46,11 +46,11 @@ class SetSamples:
         Returns the projected sample point.
         """
         vertex_names = node.vertex_path
-        active_edges = node.edge_path
+        edge_names = node.edge_path
         
-        # gcs vertices and edges
+        # gcs vertices and edges based on search node
         vertices = [graph.vertices[name].gcs_vertex for name in vertex_names]
-        edges = [graph.edges[edge].gcs_edge for edge in active_edges]
+        edges = [graph.edges[edge].gcs_edge for edge in edge_names]
 
         prog = MathematicalProgram()
         
@@ -66,14 +66,13 @@ class SetSamples:
         
         # Vertex Constraints
         for i, (v, x) in enumerate(zip(vertices, vertex_vars)):
-
             v.set().AddPointInSetConstraints(prog, x)  # containment in convex set            
             for binding in v.GetConstraints():  # other constraints on the vertex
                 constraint = binding.evaluator()
                 prog.AddConstraint(constraint, x)
 
         # Edge Constraints
-        for idx, (e, e_name) in enumerate(zip(edges, active_edges)):
+        for idx, (e, e_name) in enumerate(zip(edges, edge_names)):
             for binding in e.GetConstraints():
                 constraint = binding.evaluator()
                 u_idx, v_idx = idx, idx + 1
@@ -86,8 +85,8 @@ class SetSamples:
             logger.error(
                 f"Failed to project sample for vertex {node.vertex_name}"
                 f"\nnum total samples for this vertex: {len(self.samples)}"
-                f"sample: {sample}"
-                f"vertex_path: {node.vertex_path}"
+                f"\nsample: {sample}"
+                f"\nvertex_path: {node.vertex_path}"
             )
             return None
         return result.GetSolution(sample_vars)

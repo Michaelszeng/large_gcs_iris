@@ -124,6 +124,7 @@ class GcsStar(SearchAlgorithm):
         while sol == None and len(self._Q) > 0:
             sol = self._run_iteration()
             self._alg_metrics.time_wall_clock = time.time() - start_time
+            # self._graph.plt.pause(10)
         if sol is None:
             logger.warning(
                 f"{self.__class__.__name__} failed to find a path to the target."

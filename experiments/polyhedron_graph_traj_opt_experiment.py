@@ -42,6 +42,16 @@ TEST_SCENE = "2DOFFLIPPER"
 # TEST_SCENE = "14DOFIIWAS"
 # TEST_SCENE = "15DOFALLEGRO"
 
+if TEST_SCENE == "2DOFFLIPPER":
+    s = np.array([0, 0])
+    t = np.array([-1, 1.7])
+    voxel_size = 0.25
+elif TEST_SCENE == "3DOFFLIPPER":
+    s = np.array([0.18, -0.1, -0.78])
+    t = np.array([-1.7, 1.0, 1.5])
+    voxel_size = 0.5
+else:
+    raise ValueError(f"TEST_SCENE {TEST_SCENE} not supported yet.")
 rng = RandomGenerator(1234)
 np.random.seed(1234)
 
@@ -140,12 +150,11 @@ def main(cfg: OmegaConf) -> None:
     workspace = np.hstack([plant.GetPositionLowerLimits().reshape(-1, 1), plant.GetPositionUpperLimits().reshape(-1, 1)])
     print(f"Workspace: {workspace}")  
     
-    # 2D Test 
     g = PolyhedronGraph(
-        s = np.array([0, 0]),
-        t = np.array([-1, 1.7]),
+        s = s,
+        t = t,
         workspace = workspace,
-        default_voxel_size = 0.25,
+        default_voxel_size = voxel_size,
         should_add_gcs = True,
         const_edge_cost=cfg.const_edge_cost,
         voxel_collision_checker=VoxelSceneGraphCollisionChecker(collision_checker_params),
