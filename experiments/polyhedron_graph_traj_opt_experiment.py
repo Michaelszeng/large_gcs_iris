@@ -155,7 +155,6 @@ def main(cfg: OmegaConf) -> None:
         t = t,
         workspace = workspace,
         default_voxel_size = voxel_size,
-        should_add_gcs = True,
         const_edge_cost=cfg.const_edge_cost,
         voxel_collision_checker=VoxelSceneGraphCollisionChecker(collision_checker_params),
     )

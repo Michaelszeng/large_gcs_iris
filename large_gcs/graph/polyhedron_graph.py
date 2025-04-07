@@ -92,7 +92,6 @@ class PolyhedronGraph(Graph):
         workspace: np.ndarray = None,
         default_voxel_size: float = 0.2,
         num_knot_points_per_set: int = 2,
-        should_add_gcs: bool = True,
         const_edge_cost: float = 1e-4,
         voxel_collision_checker: VoxelCollisionChecker = None,
     ):
@@ -107,7 +106,6 @@ class PolyhedronGraph(Graph):
         self.domain = HPolyhedron.MakeBox(workspace[:, 0], workspace[:, 1])  # translate workspace to HPolyhedron
         self.default_voxel_size = default_voxel_size
         self.num_knot_points = num_knot_points_per_set
-        self._should_add_gcs = should_add_gcs
         self._const_edge_cost = const_edge_cost
         self.voxel_collision_checker = voxel_collision_checker
         
@@ -187,15 +185,17 @@ class PolyhedronGraph(Graph):
                     return
                 polyhedron = Polyhedron.from_drake_hpoly(region, should_compute_vertices=True if self.base_dim in [2, 3] else False, num_knot_points=self.num_knot_points)  # Compute vertices for 2D/3D visualization
                 
-                # Replace the voxel vertex in the graph with a vertex containing the new region (the new vertex retains the same name, costs, constraints, etc. just a different convex set)
-                # Note that it's necessary to explicitly add the new vertex and remove the old vertex; it's not possible to mutate the old vertex's gcs_vertex's convex set in place
-                vertex_copy = self.vertices[vertex_name]
-                edge_copies = self.incoming_edges(vertex_name) + self.outgoing_edges(vertex_name)
-                self.remove_vertex(vertex_name)  # Must remove old vertex before adding new vertex (with the same name)
-                # Removing the vertex deletes the GCS vertex and edges too, so we don't have to worry about conflicts with the new vertex and edges
-                self.add_vertex(Vertex(convex_set=polyhedron, costs=vertex_copy.costs, constraints=vertex_copy.constraints), name=vertex_name, should_add_to_gcs=True)
-                for edge in edge_copies:  # The edges operate by vertex name, so reusing these edges is fine.
-                    self.add_edge(edge)
+                # Swap the voxel in the graph with the new region
+                self.vertices[vertex_name].convex_set = polyhedron  # Replace voxel with region
+                # # Replace the voxel vertex in the graph with a vertex containing the new region (the new vertex retains the same name, costs, constraints, etc. just a different convex set)
+                # # Note that it's necessary to explicitly add the new vertex and remove the old vertex; it's not possible to mutate the old vertex's gcs_vertex's convex set in place
+                # vertex_copy = self.vertices[vertex_name]
+                # edge_copies = self.incoming_edges(vertex_name) + self.outgoing_edges(vertex_name)
+                # self.remove_vertex(vertex_name)  # Must remove old vertex before adding new vertex (with the same name)
+                # # Removing the vertex deletes the GCS vertex and edges too, so we don't have to worry about conflicts with the new vertex and edges
+                # self.add_vertex(Vertex(convex_set=polyhedron, costs=vertex_copy.costs, constraints=vertex_copy.constraints), name=vertex_name)
+                # for edge in edge_copies:  # The edges operate by vertex name, so reusing these edges is fine.
+                #     self.add_edge(edge)
                 
                 # Remove the voxel from `self.uncovered_voxels`
                 self.uncovered_voxels.remove(vertex_name)
@@ -225,7 +225,6 @@ class PolyhedronGraph(Graph):
                             costs=self._create_single_edge_costs(vertex_name, voxel_parent_region_name),
                             constraints=self._create_single_edge_constraints(vertex_name, voxel_parent_region_name),
                         ),
-                        should_add_to_gcs=self._should_add_gcs, 
                     )
 
             """
@@ -338,7 +337,7 @@ class PolyhedronGraph(Graph):
             # # Just for plotting
             # for voxel in partially_contained_voxels:
             #     vertex = Vertex(voxel, costs=[], constraints=[])
-            #     self.add_vertex(vertex, f"test_voxel_{self.get_new_region_name()}", should_add_to_gcs=self._should_add_gcs)
+            #     self.add_vertex(vertex, f"test_voxel_{self.get_new_region_name()}")
             # self.update_animation(None)
             # time.sleep(5)
                 
@@ -359,7 +358,6 @@ class PolyhedronGraph(Graph):
                         costs=self._create_single_edge_costs(self.source_name, neighbor_name),
                         constraints=self._create_single_edge_constraints(self.source_name, neighbor_name),
                     ),
-                    should_add_to_gcs=self._should_add_gcs,
                 )
         
         # Draw edge from newly generated region to the target vertex if the newly generated region contains the target
@@ -373,7 +371,6 @@ class PolyhedronGraph(Graph):
                     costs=self._create_single_edge_costs(vertex_name, self.target_name),
                     constraints=self._create_single_edge_constraints(vertex_name, self.target_name),
                 ),
-                should_add_to_gcs=self._should_add_gcs,
             )
                 
     def _generate_neighbor(
@@ -393,7 +390,7 @@ class PolyhedronGraph(Graph):
                 costs=self._create_single_vertex_costs(v_set),
                 constraints=self._create_single_vertex_constraints(v_set),
             )
-            self.add_vertex(vertex, v, should_add_to_gcs=self._should_add_gcs)
+            self.add_vertex(vertex, v)
 
         # If v is a voxel, add edge from v to its parent region
         if isinstance(v_set, Voxel):
@@ -404,7 +401,6 @@ class PolyhedronGraph(Graph):
                     costs=self._create_single_edge_costs(u, v),
                     constraints=self._create_single_edge_constraints(u, v),
                 ),
-                should_add_to_gcs=self._should_add_gcs,
             )
             self.uncovered_voxels.add(v, v_set)
         
@@ -420,7 +416,6 @@ class PolyhedronGraph(Graph):
                         costs=self._create_single_edge_costs(neighbor_name, v),
                         constraints=self._create_single_edge_constraints(neighbor_name, v),
                     ),
-                    should_add_to_gcs=self._should_add_gcs,
                 )
     
     def _does_vertex_have_possible_edge_to_target(self, vertex_name: str) -> bool:

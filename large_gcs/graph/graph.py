@@ -18,6 +18,7 @@ from pydrake.all import (
     MathematicalProgramResult,
     Parallelism,
     SolverOptions,
+    Variable,
 )
 from tqdm import tqdm
 
@@ -189,22 +190,19 @@ class Graph:
             ), "Each row of workspace_bounds should specify lower and upper bounds for a dimension"
         self.workspace = workspace
 
-        self._gcs = GraphOfConvexSets()
-
         self._gcs_options_convex_relaxation = GraphOfConvexSetsOptions()
         # TURN OFF PRESOLVE debugging
         # self._gcs_options.solver_options.SetOption(MosekSolver.id(), "MSK_IPAR_PRESOLVE_USE", 0)
-
         self._gcs_options_convex_relaxation.convex_relaxation = True
         self._gcs_options_convex_relaxation.preprocessing = False
         self._gcs_options_convex_relaxation.max_rounded_paths = 10
-        # self._gcs_options_convex_relaxation..max_rounding_trials = 50
+        # self._gcs_options_convex_relaxation.max_rounding_trials = 50
 
         self._gcs_options_wo_relaxation = GraphOfConvexSetsOptions()
         self._gcs_options_wo_relaxation.convex_relaxation = False
 
     def add_vertex(
-        self, vertex: Vertex, name: str = "", should_add_to_gcs: bool = True
+        self, vertex: Vertex, name: str = ""
     ):
         """Add a vertex to the graph."""
         if name == "":
@@ -230,32 +228,15 @@ class Graph:
         # Makes a copy so that the original vertex is not modified
         # allows for convenient adding of vertices from one graph to another
         v = copy(vertex)
-        if should_add_to_gcs:
-            v.gcs_vertex = self._gcs.AddVertex(v.convex_set.set, name)
-            # Add costs and constraints to gcs vertex
-            if v.costs:
-                for cost in v.costs:
-                    binding = Binding[Cost](cost, v.gcs_vertex.x().flatten())
-                    v.gcs_vertex.AddCost(binding)
-            if v.constraints:
-                for constraint in v.constraints:
-                    binding = Binding[Constraint](
-                        constraint, v.gcs_vertex.x().flatten()
-                    )
-                    v.gcs_vertex.AddConstraint(binding)
-
         self.vertices[name] = v
 
     def remove_vertex(self, name: str):
         """Remove a vertex from the graph as well as any edges from or to that
         vertex."""
-        self._gcs.RemoveVertex(self.vertices[name].gcs_vertex)
         self.vertices.pop(name)
         for edge in self.edge_keys:
             if name in edge:
-                self.remove_edge(
-                    edge, remove_from_gcs=False
-                )  # gcs.RemoveVertex already removes edges from gcs
+                self.remove_edge(edge)
 
     def add_vertices_from_sets(
         self, sets: List[ConvexSet], costs=None, constraints=None, names=None
@@ -287,7 +268,7 @@ class Graph:
         ):
             self.add_vertex(Vertex(set, cost_list, constraint_list), name)
 
-    def add_edge(self, edge: Edge, should_add_to_gcs: bool = True):
+    def add_edge(self, edge: Edge):
         """Add an edge to the graph."""
         # Check if the edge already exists
         if edge.key in self.edges:
@@ -309,40 +290,18 @@ class Graph:
             ):
                 e.constraints = self._default_costs_constraints.edge_constraints
 
-        if should_add_to_gcs:
-            e.gcs_edge = self._gcs.AddEdge(
-                u=self.vertices[e.u].gcs_vertex,
-                v=self.vertices[e.v].gcs_vertex,
-                name=e.key,
-            )
-
-            # Add costs and constraints to gcs edge
-            if e.costs:
-                for cost in e.costs:
-                    x = np.concatenate([e.gcs_edge.xu(), e.gcs_edge.xv()])
-                    binding = Binding[Cost](cost, x)
-                    e.gcs_edge.AddCost(binding)
-            if e.constraints:
-                for constraint in e.constraints:
-                    x = np.concatenate([e.gcs_edge.xu(), e.gcs_edge.xv()])
-                    binding = Binding[Constraint](constraint, x)
-                    e.gcs_edge.AddConstraint(binding)
-
         self.edges[e.key] = e
         self._adjacency_list[e.u].append(e.v)
         return e
     
-    def add_undirected_edge(self, edge: Edge, should_add_to_gcs: bool = True):
+    def add_undirected_edge(self, edge: Edge):
         """Add an undirected edge to the graph."""
-        self.add_edge(edge, should_add_to_gcs)
-        self.add_edge(Edge(edge.v, edge.u, edge.costs, edge.constraints), should_add_to_gcs)
+        self.add_edge(edge)
+        self.add_edge(Edge(edge.v, edge.u, edge.costs, edge.constraints))
 
-    def remove_edge(self, edge_key: str, remove_from_gcs: bool = True):
+    def remove_edge(self, edge_key: str):
         """Remove an edge from the graph."""
         e = self.edges[edge_key]
-        if remove_from_gcs:
-            self._gcs.RemoveEdge(e.gcs_edge)
-
         self.edges.pop(edge_key)
         self._adjacency_list[e.u].remove(e.v)
 
@@ -545,10 +504,17 @@ class Graph:
             result=result if should_return_result else None,
         )
 
-    def _parse_result(self, result: MathematicalProgramResult) -> ShortestPathSolution:
+    def _parse_result(
+        self,
+        gcs: GraphOfConvexSets,
+        result: MathematicalProgramResult,
+        path_variables: List[Variable],
+    ) -> ShortestPathSolution:
         """
         Creates ShortestPathSolution object from the result of a GCS solve (not
         the convex restriction).
+        
+        UNTESTED/UNUSED
         """
         cost = result.get_optimal_cost()
         time = result.get_solver_details().optimizer_time
@@ -556,20 +522,19 @@ class Graph:
         ambient_path = []
         flows = []
         if result.is_success():
-            flow_variables = [e.phi() for e in self._gcs.Edges()]
+            flow_variables = [e.phi() for e in gcs.Edges()]
             flows = [result.GetSolution(p) for p in flow_variables]
             edge_path = []
             for k, flow in enumerate(flows):
                 if flow >= 0.99:
                     edge_path.append(self.edges[self.edge_keys[k]])
-            assert len(self._gcs.Edges()) == self.n_edges
+            assert len(gcs.Edges()) == self.n_edges
             # Edges are in order they were added to the graph and not in order of the path
             vertex_path = self._convert_active_edges_to_vertex_path(
                 self.source_name, self.target_name, edge_path
             )
-            # vertex_path = [self.source_name]
             ambient_path = [
-                result.GetSolution(self.vertices[v].gcs_vertex.x()) for v in vertex_path
+                result.GetSolution(x) for x in path_variables
             ]
 
         return ShortestPathSolution(
