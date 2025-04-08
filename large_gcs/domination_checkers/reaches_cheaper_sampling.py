@@ -24,33 +24,35 @@ class ReachesCheaperSampling(SamplingDominationChecker):
         # Assumes candidate_sol is feasible
         
         # Useful debug prints to investigate specific paths
-        print(f"candidate_sol.vertex_path: {candidate_sol.vertex_path}")
-        if candidate_sol.vertex_path is not None and (candidate_sol.vertex_path == ['source', '0_0_', '0_1_', '-1_2_', '0_3__sample'] or candidate_sol.vertex_path == ['source', '0_0_', '0_1_', '0_2_', '0_3__sample']):
-            print("\n\n\n\n\n\n\n")
+        DEBUG = False
+        if DEBUG:
             print(f"candidate_sol.vertex_path: {candidate_sol.vertex_path}")
-            print(f"candidate_sol.trajectory: {[np.round(arr, 4).tolist() for arr in candidate_sol.trajectory]}")  # print w/4 decimal places
-            
-            # Calculate lengths of each segment of trajectory
-            # Get last knot point from each trajectory point
-            last_knot_points = []
-            for traj_point in candidate_sol.trajectory:
-                # Reshape into knot points and take the last one
-                num_knot_points = len(traj_point) // self._graph.base_dim
-                knot_points = traj_point.reshape(num_knot_points, self._graph.base_dim)
-                last_knot_points.append(knot_points[-1])
-            
-            # Calculate total path length to normalize speed
-            path_length = 0
-            for i in range(len(candidate_sol.vertex_path)-1):
-                diff = last_knot_points[i+1] - last_knot_points[i]
-                path_length += np.linalg.norm(diff)
-            print(f"candidate sol path length to sample: {path_length}")
-            
-            print(f"alt_sol.vertex_path: {alt_sol.vertex_path}")
-            print("alt_sol.cost: ", alt_sol.cost)
-            print("candidate_sol.cost: ", candidate_sol.cost)
-            print("alt_sol.is_success: ", alt_sol.is_success)
-            print("\n\n\n\n\n\n\n")
+            if candidate_sol.vertex_path is not None and candidate_sol.vertex_path == ['source', '0_0_', '0_1_', '-1_2_', '0_3__sample']:
+                print("\n\n\n\n\n\n\n")
+                print(f"candidate_sol.vertex_path: {candidate_sol.vertex_path}")
+                print(f"candidate_sol.trajectory: {[np.round(arr, 4).tolist() for arr in candidate_sol.trajectory]}")  # print w/4 decimal places
+                
+                # Calculate lengths of each segment of trajectory
+                # Get last knot point from each trajectory point
+                last_knot_points = []
+                for traj_point in candidate_sol.trajectory:
+                    # Reshape into knot points and take the last one
+                    num_knot_points = len(traj_point) // self._graph.base_dim
+                    knot_points = traj_point.reshape(num_knot_points, self._graph.base_dim)
+                    last_knot_points.append(knot_points[-1])
+                
+                # Calculate total path length to normalize speed
+                path_length = 0
+                for i in range(len(candidate_sol.vertex_path)-1):
+                    diff = last_knot_points[i+1] - last_knot_points[i]
+                    path_length += np.linalg.norm(diff)
+                print(f"candidate sol path length to sample: {path_length}")
+                
+                print(f"alt_sol.vertex_path: {alt_sol.vertex_path}")
+                print("alt_sol.cost: ", alt_sol.cost)
+                print("candidate_sol.cost: ", candidate_sol.cost)
+                print("alt_sol.is_success: ", alt_sol.is_success)
+                print("\n\n\n\n\n\n\n")
             
         return alt_sol.is_success and alt_sol.cost <= candidate_sol.cost
 

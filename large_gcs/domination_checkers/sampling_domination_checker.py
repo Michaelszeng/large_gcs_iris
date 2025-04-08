@@ -197,6 +197,8 @@ class SamplingDominationChecker(DominationChecker):
             candidate_sol, suceeded = self._compute_candidate_sol(
                 candidate_node, sample_vertex_name, sample
             )
+            print(f"candidate_node.vertex_path: {candidate_node.vertex_path}")
+            print(f"candidate_sol.vertex_path: {candidate_sol.vertex_path}")
             
             if not suceeded:
                 self._graph.remove_vertex(sample_vertex_name)

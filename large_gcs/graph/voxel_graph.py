@@ -98,7 +98,6 @@ class VoxelGraph(Graph):
         workspace: np.ndarray = None,
         default_voxel_size: float = 0.2,
         num_knot_points_per_voxel: int = 2,
-        should_add_gcs: bool = True,
         const_edge_cost: float = 1e-4,
         voxel_collision_checker: VoxelCollisionChecker = None,
     ):
@@ -110,7 +109,6 @@ class VoxelGraph(Graph):
         self.workspace = workspace
         self.default_voxel_size = default_voxel_size
         self.num_knot_points = num_knot_points_per_voxel
-        self._should_add_gcs = should_add_gcs
         self._const_edge_cost = const_edge_cost
         self.voxel_collision_checker = voxel_collision_checker
         
@@ -193,8 +191,7 @@ class VoxelGraph(Graph):
                         v=neighbor_voxel_name,
                         costs=self._create_single_edge_costs(self.source_name, neighbor_voxel_name),
                         constraints=self._create_single_edge_constraints(self.source_name, neighbor_voxel_name),
-                    ),
-                    should_add_to_gcs=self._should_add_gcs,
+                    )
                 )
             
             # Draw edges to the target vertex if it is in the neighbor voxel
@@ -206,8 +203,7 @@ class VoxelGraph(Graph):
                         v=self.target_name,
                         costs=self._create_single_edge_costs(neighbor_voxel_name, self.target_name),
                         constraints=self._create_single_edge_constraints(neighbor_voxel_name, self.target_name),
-                    ),
-                    should_add_to_gcs=self._should_add_gcs,
+                    )
                 )
                 
     def _generate_neighbor(
@@ -222,9 +218,9 @@ class VoxelGraph(Graph):
             vertex = Vertex(
                 v_set,
                 costs=self._create_single_vertex_costs(v_set),
-                constraints=self._create_single_vertex_constraints(v_set),
+                constraints=self._create_single_vertex_constraints(v_set)
             )
-            self.add_vertex(vertex, v, should_add_to_gcs=self._should_add_gcs)
+            self.add_vertex(vertex, v)
         
         # Add edges between the generated neighbor (v) and all adjacent voxels
         v_indices = v.split("_")
@@ -248,8 +244,7 @@ class VoxelGraph(Graph):
                         v=neighbor_voxel_name, 
                         costs=self._create_single_edge_costs(v, neighbor_voxel_name),
                         constraints=self._create_single_edge_constraints(v, neighbor_voxel_name),
-                    ),
-                    should_add_to_gcs=self._should_add_gcs,
+                    )
                 )
     
     def _does_vertex_have_possible_edge_to_target(self, vertex_name: str) -> bool:

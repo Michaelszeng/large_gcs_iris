@@ -178,6 +178,10 @@ class GcsStar(SearchAlgorithm):
 
         self._save_metrics(n, len(successors))
         
+        # FOR DEBUGGING
+        # if n.vertex_name == "36":
+        #     self._graph.plt.pause(100)
+        
         # Iterate over successors, add their search nodes to Q (if not dominated)
         for v in successors:
             if not self._allow_cycles and v in n.vertex_path:

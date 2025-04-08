@@ -56,11 +56,13 @@ from large_gcs.geometry.utils import ik
 
 logger = logging.getLogger(__name__)
 
-@dataclass
 class UncoveredVoxels:
     """
     Help keep track of Voxel names (str) and Voxel objects that are still 
     "active" (i.e. not fully contained in a region).
+    
+    We convert the voxels to byte strings to create a hashable object for
+    quicker lookup.
     """
     map: Dict[str, Voxel]
     voxel_centers: Set[bytes]
@@ -68,18 +70,25 @@ class UncoveredVoxels:
     def __init__(self):
         self.map = {}
         self.voxel_centers = set()
+        self._precision = 6
     
     def remove(self, voxel_name: str):
         voxel = self.map.pop(voxel_name)
-        self.voxel_centers.remove(voxel.center.tobytes())
+        # Round to a reasonable precision before converting to bytes
+        rounded_center = np.round(voxel.center, decimals=self._precision)
+        self.voxel_centers.remove(rounded_center.tobytes())
         
     def add(self, voxel_name: str, voxel: Voxel):
         self.map[voxel_name] = voxel
-        self.voxel_centers.add(voxel.center.tobytes())
+        # Round to a reasonable precision before converting to bytes
+        rounded_center = np.round(voxel.center, decimals=self._precision)
+        self.voxel_centers.add(rounded_center.tobytes())
         
     def __contains__(self, voxel: Voxel) -> bool:
         assert isinstance(voxel, Voxel), f"is type {type(voxel)}, should be Voxel"
-        return voxel.center.tobytes() in self.voxel_centers
+        # Round to a reasonable precision before converting to bytes
+        rounded_center = np.round(voxel.center, decimals=self._precision)
+        return rounded_center.tobytes() in self.voxel_centers
 
 class PolyhedronGraph(Graph):
     def __init__(
@@ -123,6 +132,9 @@ class PolyhedronGraph(Graph):
         self.clique_inflation_options = FastCliqueInflationOptions()
         # self.clique_inflation_options.verbose = True
         
+        self.containment_tol = 1e-2  # This is actually very important; allowable tolerance to determine if a voxel is fully contained in a region
+                                     # If too low, voxel may not be considered contained, thus resulting in an infinite loop of inflating this voxel, then regenerating the voxel...
+        
         self.num_vertices = 0  # this var should only be modified by calls to get_new_vertex_name; it is only used for naming new reigons
         
         self.uncovered_voxels = UncoveredVoxels()  # Keep track of Voxel names (str) and Voxel objects that are not fully contained in a region
@@ -133,7 +145,7 @@ class PolyhedronGraph(Graph):
             sets,
             costs=self._create_vertex_costs(sets),
             constraints=self._create_vertex_constraints(sets),
-            names=["source", "target"],
+            names=["source", "target"]
         )  # This function is defined in graph.py
         
         self.set_source("source")
@@ -179,23 +191,15 @@ class PolyhedronGraph(Graph):
                 # Seed region using clique formed by voxel vertices
                 try:
                     # Errors may occur if collision sampling does not detect a collision
+                    print(f"Inflating region around voxel {vertex_name} with center {voxel.center}.")
                     region = FastCliqueInflation(self.voxel_collision_checker.checker, voxel.get_vertices(), self.domain, self.clique_inflation_options)
                 except:
-                    print(f"Error inflating region for voxel: {voxel.center}.")
+                    print(f"Error inflating region for voxel {vertex_name} with center {voxel.center}.")
                     return
                 polyhedron = Polyhedron.from_drake_hpoly(region, should_compute_vertices=True if self.base_dim in [2, 3] else False, num_knot_points=self.num_knot_points)  # Compute vertices for 2D/3D visualization
                 
                 # Swap the voxel in the graph with the new region
                 self.vertices[vertex_name].convex_set = polyhedron  # Replace voxel with region
-                # # Replace the voxel vertex in the graph with a vertex containing the new region (the new vertex retains the same name, costs, constraints, etc. just a different convex set)
-                # # Note that it's necessary to explicitly add the new vertex and remove the old vertex; it's not possible to mutate the old vertex's gcs_vertex's convex set in place
-                # vertex_copy = self.vertices[vertex_name]
-                # edge_copies = self.incoming_edges(vertex_name) + self.outgoing_edges(vertex_name)
-                # self.remove_vertex(vertex_name)  # Must remove old vertex before adding new vertex (with the same name)
-                # # Removing the vertex deletes the GCS vertex and edges too, so we don't have to worry about conflicts with the new vertex and edges
-                # self.add_vertex(Vertex(convex_set=polyhedron, costs=vertex_copy.costs, constraints=vertex_copy.constraints), name=vertex_name)
-                # for edge in edge_copies:  # The edges operate by vertex name, so reusing these edges is fine.
-                #     self.add_edge(edge)
                 
                 # Remove the voxel from `self.uncovered_voxels`
                 self.uncovered_voxels.remove(vertex_name)
@@ -264,35 +268,35 @@ class PolyhedronGraph(Graph):
                 vtxs = voxel.get_vertices()  # base_dim x num_vertices
                 num_vtxs = vtxs.shape[1]
                 
-                # Check if all vertices of voxel are contained in current region (full containment)
-                if np.all(region.H @ vtxs <= np.tile(region.h, (num_vtxs, 1)).T):
-                    # print(f"Voxel {voxel.center} is fully contained in current region.")
+                # Ensure not all vertices of voxel are contained in current region
+                if np.all(region.H @ vtxs <= np.tile(region.h, (num_vtxs, 1)).T + self.containment_tol):
+                    print(f"Voxel {voxel.center} is fully contained in current region: {vertex_name}.")
                     continue
                 
-                # Check if all vertices of voxel are contained in any other region (full containment)
+                # Ensure not all vertices of voxel are contained in any other region
                 for other_region in self.vertices.values():
                     if isinstance(other_region.convex_set, Polyhedron):
                         fully_contained_in_other_region = False
                         if np.all(other_region.convex_set.H @ vtxs <= np.tile(other_region.convex_set.h, (num_vtxs, 1)).T):
                             fully_contained_in_other_region = True  
-                            # print(f"Voxel {voxel.center} is fully contained in region.")
+                            # print(f"Voxel {voxel.center} is fully contained in other region.")
                             break
                 if fully_contained_in_other_region:
                     continue
                 
-                # Check if all vertices of voxel are in workspace
+                # Ensure all vertices of voxel are in workspace
                 if not np.all(self.domain.A() @ vtxs <= np.tile(self.domain.b(), (num_vtxs, 1)).T):
                     # print(f"Voxel {voxel.center} is not in workspace.")
                     continue
                 
-                # Check if voxel intersects with obstacle
+                # Ensure voxel doesn't intersect with obstacle
                 if not self.voxel_collision_checker.check_voxel_collision_free(voxel):
                     # print(f"Voxel {voxel.center} intersects with obstacle.")
                     continue
                 
                 non_contained_voxels.append(voxel)
                 
-                # Create MathematicalProgram to check that voxel intersects with region (partial containment)
+                # Create MathematicalProgram that ensures voxel has non-empty intersection with region
                 prog = MathematicalProgram()
                 # Find x subject to: x is a convex combination of vertices, x is in region
                 x = prog.NewContinuousVariables(voxel.dim, "x")  # (base_dim,)
@@ -370,7 +374,7 @@ class PolyhedronGraph(Graph):
                     v=self.target_name,
                     costs=self._create_single_edge_costs(vertex_name, self.target_name),
                     constraints=self._create_single_edge_constraints(vertex_name, self.target_name),
-                ),
+                )
             )
                 
     def _generate_neighbor(
@@ -400,7 +404,7 @@ class PolyhedronGraph(Graph):
                     v=v, 
                     costs=self._create_single_edge_costs(u, v),
                     constraints=self._create_single_edge_constraints(u, v),
-                ),
+                )
             )
             self.uncovered_voxels.add(v, v_set)
         
@@ -420,9 +424,6 @@ class PolyhedronGraph(Graph):
     
     def _does_vertex_have_possible_edge_to_target(self, vertex_name: str) -> bool:
         """Determine if we can add an edge to the target vertex."""
-        if isinstance(self.vertices[vertex_name].convex_set, Polyhedron):
-            print(f"Polyhedron {vertex_name} has edge to target??")
-            
         return self.vertices[vertex_name].convex_set.set_in_space.PointInSet(self.t)
         
     ############################################################################
@@ -770,6 +771,18 @@ class PolyhedronGraph(Graph):
                     rect = self.plot_voxel(vertex, fill=False)
                     self.animation_ax.add_patch(rect)
                     self.voxel_patches.append(rect)
+                    
+                    # Add voxel name as text in the center of the voxel
+                    if vertex_name not in ["source", "target"]:
+                        center = vertex.convex_set.center
+                        text = self.animation_ax.text(
+                            center[0], center[1], 
+                            vertex_name,
+                            ha='center', va='center',
+                            fontsize=8, color='black'
+                        )
+                        self.voxel_patches.append(text)
+                    
                 elif isinstance(vertex.convex_set, Polyhedron):
                     polygon_patch = self.plot_polyhedron(vertex, facecolor='red', alpha=0.2)
                     self.animation_ax.add_patch(polygon_patch)
@@ -781,6 +794,18 @@ class PolyhedronGraph(Graph):
                     cube = self.plot_voxel(vertex, fill=False)
                     self.animation_ax.add_collection3d(cube)
                     self.voxel_patches.append(cube)
+                    
+                    # Add voxel name as text in the center of the voxel
+                    if vertex_name not in ["source", "target"]:
+                        center = vertex.convex_set.center
+                        text = self.animation_ax.text3D(
+                            center[0], center[1], center[2],
+                            vertex_name,
+                            ha='center', va='center',
+                            fontsize=8, color='black'
+                        )
+                        self.voxel_patches.append(text)
+                    
                 elif isinstance(vertex.convex_set, Polyhedron):
                     polygon_patch_3d = self.plot_polyhedron(vertex, facecolor='red', alpha=0.2)
                     self.animation_ax.add_collection3d(polygon_patch_3d)
@@ -827,7 +852,7 @@ class PolyhedronGraph(Graph):
                 for vertex_name in sol.vertex_path:
                     if vertex_name not in ["source", "target"]:
                         if isinstance(self.vertices[vertex_name].convex_set, Voxel):
-                            rect = self.plot_voxel(self.vertices[vertex_name], fill=True, facecolor='yellow', alpha=0.3)
+                            rect = self.plot_voxel(self.vertices[vertex_name], fill=True, facecolor='green', alpha=0.5)
                             self.animation_ax.add_patch(rect)
                             self.voxel_patches.append(rect)
                         elif isinstance(self.vertices[vertex_name].convex_set, Polyhedron):
@@ -859,11 +884,11 @@ class PolyhedronGraph(Graph):
                 for vertex_name in sol.vertex_path:
                     if vertex_name not in ["source", "target"]:
                         if isinstance(self.vertices[vertex_name].convex_set, Voxel):
-                            cube = self.plot_voxel(self.vertices[vertex_name], fill=True, facecolor='yellow', alpha=0.3)
+                            cube = self.plot_voxel(self.vertices[vertex_name], fill=True, facecolor='green', alpha=0.5)
                             self.animation_ax.add_collection3d(cube)
                             self.voxel_patches.append(cube)
                         elif isinstance(self.vertices[vertex_name].convex_set, Polyhedron):
-                            polygon_patch_3d = self.plot_polyhedron(self.vertices[vertex_name], facecolor='yellow', alpha=0.3)
+                            polygon_patch_3d = self.plot_polyhedron(self.vertices[vertex_name], facecolor='yellow', alpha=0.0)
                             self.animation_ax.add_collection3d(polygon_patch_3d)
                             self.voxel_patches.append(polygon_patch_3d)
                 
@@ -878,20 +903,6 @@ class PolyhedronGraph(Graph):
                     wrap=True
                 )
                 self.voxel_patches.append(self.path_text)  # Add to patches so it gets cleaned up
-            
-        
-        # Set the limits of the axes to be 10% larger than the workspace
-        if self.workspace is not None:
-            x_range = self.workspace[0][1] - self.workspace[0][0]
-            y_range = self.workspace[1][1] - self.workspace[1][0]
-            x_margin = 0.1 * x_range
-            y_margin = 0.1 * y_range
-            ax.set_xlim(self.workspace[0][0] - x_margin, self.workspace[0][1] + x_margin)
-            ax.set_ylim(self.workspace[1][0] - y_margin, self.workspace[1][1] + y_margin)
-            if self.base_dim == 3:    
-                z_range = self.workspace[2][1] - self.workspace[2][0]
-                z_margin = 0.1 * z_range
-                ax.set_zlim(self.workspace[2][0] - z_margin, self.workspace[2][1] + z_margin)
             
         if self.base_dim == 2:
             ax.set_aspect('equal')
@@ -913,6 +924,19 @@ class PolyhedronGraph(Graph):
         self.animation_fig.canvas.draw()
         plt.show(block=False)  # Show the figure but don't block
         plt.pause(0.1)  # Small pause to ensure window appears
+        
+        # Set the limits of the axes to be 10% larger than the workspace
+        if self.workspace is not None:
+            x_range = self.workspace[0][1] - self.workspace[0][0]
+            y_range = self.workspace[1][1] - self.workspace[1][0]
+            x_margin = 0.1 * x_range
+            y_margin = 0.1 * y_range
+            self.animation_ax.set_xlim(self.workspace[0][0] - x_margin, self.workspace[0][1] + x_margin)
+            self.animation_ax.set_ylim(self.workspace[1][0] - y_margin, self.workspace[1][1] + y_margin)
+            if self.base_dim == 3:    
+                z_range = self.workspace[2][1] - self.workspace[2][0]
+                z_margin = 0.1 * z_range
+                self.animation_ax.set_zlim(self.workspace[2][0] - z_margin, self.workspace[2][1] + z_margin)
         
     def update_animation(self, sol: Optional[ShortestPathSolution] = None, block: bool = False):
         """Update the animation with new voxels and optionally a new solution."""

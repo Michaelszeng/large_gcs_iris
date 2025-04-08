@@ -452,7 +452,7 @@ class SearchAlgorithm(ABC):
     @profile_method
     def _save_metrics(self, n: SearchNode, n_successors: int, override_save=False):
         logger.info(
-            f"iter: {self._step}\n{self.alg_metrics}\nnow exploring node {n.vertex_name}'s {n_successors} neighbors ({n.priority})"
+            f"iter: {self._step}\n{self.alg_metrics}\nnow exploring node {n.vertex_name}'s {n_successors} neighbors (priority: ({n.priority}))"
         )
         self._step += 1
         current_time = time.time()

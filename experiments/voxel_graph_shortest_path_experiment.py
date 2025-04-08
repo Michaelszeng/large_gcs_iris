@@ -52,7 +52,6 @@ def main(cfg: OmegaConf) -> None:
         t = np.array([2, 2]),
         workspace = workspace,
         default_voxel_size = 1,
-        should_add_gcs = True,
         const_edge_cost=cfg.const_edge_cost,
         voxel_collision_checker=VoxelCollisionCheckerConvexObstacles(obstacles, workspace),
     )
@@ -67,7 +66,6 @@ def main(cfg: OmegaConf) -> None:
     #     t = np.array([2, 2, 2]),
     #     workspace = workspace
     #     default_voxel_size = 1,
-    #     should_add_gcs = True,
     #     const_edge_cost=cfg.const_edge_cost,
     #     voxel_collision_checker=VoxelCollisionCheckerConvexObstacles(obstacles, workspace),
     # )

@@ -32,8 +32,8 @@ from large_gcs.graph.graph import ShortestPathSolution
 from large_gcs.geometry.polyhedron import Polyhedron
 from large_gcs.utils.hydra_utils import get_cfg_from_folder
 
-TEST_SCENE = "2DOFFLIPPER"
-# TEST_SCENE = "3DOFFLIPPER"
+# TEST_SCENE = "2DOFFLIPPER"
+TEST_SCENE = "3DOFFLIPPER"
 # TEST_SCENE = "5DOFUR3"
 # TEST_SCENE = "6DOFUR3"
 # TEST_SCENE = "7DOFIIWA"
