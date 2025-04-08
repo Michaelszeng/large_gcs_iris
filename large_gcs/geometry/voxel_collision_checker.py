@@ -131,6 +131,10 @@ class VoxelSceneGraphCollisionChecker(VoxelCollisionChecker):
         """
         Check if a voxel is collision free. We consider a voxel collision-free
         if all samples are collision-free (i.e. no part of the voxel is in collision).
+        
+        Note: it may seem like a good idea to also check collisions at the corners 
+        of the voxel, but the number of corners scales exponentially with the dimension
+        of the voxel. So this quickly becomes very slow.
         """
         samples = voxel.get_samples(self.num_samples_per_voxel)
         if np.all(self.collision_checker.CheckConfigsCollisionFree(samples)):

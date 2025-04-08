@@ -126,10 +126,14 @@ class GcsStar(SearchAlgorithm):
             self._alg_metrics.time_wall_clock = time.time() - start_time
             # self._graph.plt.pause(10)
         if sol is None:
-            logger.warning(
+            print(f"self._graph.uncovered_voxels: {self._graph.uncovered_voxels}")
+            logger.error(
                 f"{self.__class__.__name__} failed to find a path to the target."
             )
-            return
+            # Keep final solution plot open
+            if self._vis_params.animate:
+                self._graph.update_animation(block=True)
+            return None
         logger.info(
             f"{self.__class__.__name__} complete! \ncost: {sol.cost}, time: {sol.time}"
             f"\nvertex path: {np.array(sol.vertex_path)}"

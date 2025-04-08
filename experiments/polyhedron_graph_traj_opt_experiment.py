@@ -177,6 +177,7 @@ def main(cfg: OmegaConf) -> None:
     g.init_animation()
 
     sol: ShortestPathSolution = alg.run()
+    assert sol is not None, "No solution found."
     logger.info(f"Solution Trajectory: {sol.trajectory}")
     
     if cfg.save_metrics:

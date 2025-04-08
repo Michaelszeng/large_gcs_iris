@@ -44,17 +44,18 @@ def main(cfg: OmegaConf) -> None:
     logger.info(cfg)
 
     # MANUALLY SET
-    d = 3
+    d = 2
     
     if d == 2:
         # 2D Test
         # obstacles = [Polyhedron.from_vertices([[2,0],[0,2],[2,2]]), Polyhedron.from_vertices([[-2,-0.3],[-0.3,-2],[-2,-2]])]
-        obstacles = [Polyhedron.from_vertices([[0,0],[2,0],[0,2],[2,2]])]
+        # obstacles = [Polyhedron.from_vertices([[0,0],[2,0],[0,2],[2,2]])]
+        obstacles = [Polyhedron.from_vertices([[0,0],[3.1,0],[0,3.1],[3.1,3.1]])]  # NO SOLUTION
         workspace = np.array([[-4, 4],    # workspace x-lim
                               [-4, 4]])   # workspace y-lim
         g = PolyhedronGraph(
             s = np.array([-3, -3]),
-            t = np.array([2.1, 2.1]),
+            t = np.array([3.5, 3.5]),
             workspace = workspace,
             default_voxel_size = 1,
             const_edge_cost=cfg.const_edge_cost,
@@ -63,6 +64,7 @@ def main(cfg: OmegaConf) -> None:
     else:
         # 3D Test
         obstacles = [Polyhedron.from_vertices([[1,0,-1],[0,1,-1],[1,1,-1],[0,0,1],[1,0,1],[0,1,1]])]
+        # obstacles = [Polyhedron.from_vertices([[0.9,0.1,-1],[0.1,0.9,-1],[0.9,0.9,-1],[0.9,0.1,1],[0.1,0.9,1],[0.9,0.9,1]])]
         workspace = np.array([[-2.5, 2.5],    # workspace x-lim
                               [-2.5, 2.5],    # workspace y-lim
                               [-2.5, 2.5]])   # workspace z-lim
@@ -93,7 +95,8 @@ def main(cfg: OmegaConf) -> None:
     g.init_animation()
 
     sol: ShortestPathSolution = alg.run()
-    # logger.info(f"Solution Trajectory: {sol.trajectory}")
+    assert sol is not None, "No solution found."
+    logger.info(f"Solution Trajectory: {sol.trajectory}")
 
     # g.plot(vertices=g.vertices, sol=sol)
     # plt.show()
