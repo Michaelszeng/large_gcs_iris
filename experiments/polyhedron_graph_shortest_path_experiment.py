@@ -25,6 +25,9 @@ from large_gcs.graph.graph import ShortestPathSolution
 from large_gcs.geometry.polyhedron import Polyhedron
 from large_gcs.utils.hydra_utils import get_cfg_from_folder
 
+from pydrake.solvers import GurobiSolver
+lic = GurobiSolver.AcquireLicense()  # Stop Gurobi license spam in the console
+
 logger = logging.getLogger(__name__)
 
 @hydra.main(version_base=None, config_path="../config", config_name="shortest_piecewise_linear_path")

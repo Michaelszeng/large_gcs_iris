@@ -32,6 +32,9 @@ from large_gcs.graph.graph import ShortestPathSolution
 from large_gcs.geometry.polyhedron import Polyhedron
 from large_gcs.utils.hydra_utils import get_cfg_from_folder
 
+from pydrake.solvers import GurobiSolver
+lic = GurobiSolver.AcquireLicense()  # Stop Gurobi license spam in the console
+
 # TEST_SCENE = "2DOFFLIPPER"
 TEST_SCENE = "3DOFFLIPPER"
 # TEST_SCENE = "5DOFUR3"
