@@ -48,9 +48,9 @@ def main(cfg: OmegaConf) -> None:
     
     if d == 2:
         # 2D Test
-        # obstacles = [Polyhedron.from_vertices([[2,0],[0,2],[2,2]]), Polyhedron.from_vertices([[-2,-0.3],[-0.3,-2],[-2,-2]])]
+        obstacles = [Polyhedron.from_vertices([[2,0],[0,2],[2,2]]), Polyhedron.from_vertices([[-2,-0.3],[-0.3,-2],[-2,-2]])]
         # obstacles = [Polyhedron.from_vertices([[0,0],[2,0],[0,2],[2,2]])]
-        obstacles = [Polyhedron.from_vertices([[0,0],[3.1,0],[0,3.1],[3.1,3.1]])]  # NO SOLUTION
+        # obstacles = [Polyhedron.from_vertices([[0,0],[3.1,0],[0,3.1],[3.1,3.1]])]  # NO SOLUTION
         workspace = np.array([[-4, 4],    # workspace x-lim
                               [-4, 4]])   # workspace y-lim
         g = PolyhedronGraph(
@@ -90,6 +90,7 @@ def main(cfg: OmegaConf) -> None:
         heuristic_inflation_factor=cfg.heuristic_inflation_factor,
         domination_checker=domination_checker,
         vis_params=AlgVisParams(log_dir=full_log_dir),
+        terminate_early=cfg.terminate_early,
     )
     
     g.init_animation()

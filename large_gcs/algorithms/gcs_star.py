@@ -94,6 +94,8 @@ class GcsStar(SearchAlgorithm):
         self.push_node_on_Q(start_node)
         self.add_node_to_S(start_node)  # Visited dictionary
         self.update_visited(start_node)  # Purely for logging
+        
+        self.solutions = []
 
         # For continuing search from a checkpoint
         if load_checkpoint_log_dir is not None:
@@ -125,8 +127,7 @@ class GcsStar(SearchAlgorithm):
             sol = self._run_iteration()
             self._alg_metrics.time_wall_clock = time.time() - start_time
             # self._graph.plt.pause(10)
-        if sol is None:
-            print(f"self._graph.uncovered_voxels: {self._graph.uncovered_voxels}")
+        if len(self.solutions) == 0:
             logger.error(
                 f"{self.__class__.__name__} failed to find a path to the target."
             )
@@ -134,9 +135,15 @@ class GcsStar(SearchAlgorithm):
             if self._vis_params.animate:
                 self._graph.update_animation(block=True)
             return None
+        
+        # Find best solution
+        sol = min(self.solutions, key=lambda x: x.cost)
+        
         logger.info(
+            f"\n===============================================================\n"
             f"{self.__class__.__name__} complete! \ncost: {sol.cost}, time: {sol.time}"
             f"\nvertex path: {np.array(sol.vertex_path)}"
+            f"\n==============================================================="
         )
         # Call post-solve again in case other solutions were found after this was first visited.
         self._graph._post_solve(sol)
@@ -144,7 +151,7 @@ class GcsStar(SearchAlgorithm):
         # Keep final solution plot open
         if self._vis_params.animate:
             self._graph.update_animation(block=True)
-        
+            
         return sol
 
     @profile_method
@@ -169,7 +176,10 @@ class GcsStar(SearchAlgorithm):
         # Check termination condition
         if n.vertex_name == self._graph.target_name:
             self._save_metrics(n, 0, override_save=True)
-            return n.sol
+            self.solutions.append(n.sol)
+            if self._terminate_early:
+                print(f"Early terminated with solution: {n.sol}")
+                return n.sol
 
         if n.vertex_name not in self._expanded:
             # Generate successors that you are about to explore
@@ -182,18 +192,12 @@ class GcsStar(SearchAlgorithm):
 
         self._save_metrics(n, len(successors))
         
-        # FOR DEBUGGING
-        # if n.vertex_name == "36":
-        #     self._graph.plt.pause(100)
-        
         # Iterate over successors, add their search nodes to Q (if not dominated)
         for v in successors:
             if not self._allow_cycles and v in n.vertex_path:
                 continue
             
-            early_terminate_sol = self._explore_successor(n, v)
-            if early_terminate_sol is not None:
-                return early_terminate_sol
+            self._explore_successor(n, v)
 
     @profile_method
     def _generate_successors(self, vertex_name: str) -> None:
@@ -262,11 +266,11 @@ class GcsStar(SearchAlgorithm):
         self.push_node_on_Q(n_next)
         self.update_visited(n_next)  # Purely for logging
 
-        # Early Termination
-        if self._terminate_early and successor == self._target_name:
-            logger.info(f"EARLY TERMINATION: Visited path to target.")
-            self._save_metrics(n_next, 0, override_save=True)
-            return n_next.sol
+        # # Early Termination
+        # if self._terminate_early and successor == self._target_name:
+        #     logger.info(f"EARLY TERMINATION: Visited path to target.")
+        #     self._save_metrics(n_next, 0, override_save=True)
+        #     return n_next.sol
 
     @profile_method
     def _is_dominated(self, n: SearchNode) -> bool:

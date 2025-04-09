@@ -18,6 +18,8 @@ save_solution: true
 save_metrics: true
 save_to_wandb: true
 
+terminate_early: true
+
 hydra:
   job_logging:
     loggers:

@@ -172,6 +172,7 @@ def main(cfg: OmegaConf) -> None:
         heuristic_inflation_factor=cfg.heuristic_inflation_factor,
         domination_checker=domination_checker,
         vis_params=AlgVisParams(log_dir=full_log_dir),
+        terminate_early=cfg.terminate_early,
     )
     
     g.init_animation()

@@ -131,12 +131,13 @@ class PolyhedronGraph(Graph):
         self.iris_options = IrisZoOptions()
         self.iris_options.random_seed = 2
         self.iris_options.mixing_steps = 51
-        self.iris_options.epsilon = 1e-3
+        self.iris_options.epsilon = 5e-3  # Admissible fraction allowed to be in collision
         # self.iris_options.verbose = True
         self.iris_options.require_sample_point_is_contained = True
         self.kEpsilonEllipsoid = 1e-5
         
         self.clique_inflation_options = FastCliqueInflationOptions()
+        self.clique_inflation_options.admissible_proportion_in_collision = 1e-2
         # self.clique_inflation_options.verbose = True
         
         self.containment_tol = 1e-2  # This is actually very important; allowable tolerance to determine if a voxel is fully contained in a region
@@ -179,7 +180,8 @@ class PolyhedronGraph(Graph):
             neighbors.append((self.source_name, self.get_new_vertex_name(), polyhedron, [self.source_name]))
             
         elif vertex_name == self.target_name:
-            raise ValueError("Should not need to generate neighbors for target vertex")
+            # Should not generate neighbors for target vertex
+            return
         
         else:
             if isinstance(self.vertices[vertex_name].convex_set, Voxel):
@@ -917,7 +919,7 @@ class PolyhedronGraph(Graph):
         elif self.base_dim == 3:
             ax.set_box_aspect([1, 1, 1])
             
-        ax.grid(True, alpha=0.3)
+        ax.grid(False)
         # ax.legend()
         ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         ax.set_title('Voxel Graph')
