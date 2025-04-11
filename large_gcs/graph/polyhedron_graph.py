@@ -377,7 +377,6 @@ class PolyhedronGraph(Graph):
         
         # Draw edge from newly generated region to the target vertex if the newly generated region contains the target
         if vertex_name != "source" and self._does_vertex_have_possible_edge_to_target(vertex_name):
-            print(f"Adding edge from {vertex_name} to {self.target_name}")
             # Directed edge to target
             self.add_edge(
                 Edge(
@@ -797,6 +796,20 @@ class PolyhedronGraph(Graph):
                     polygon_patch = self.plot_polyhedron(vertex, facecolor='red', alpha=0.2)
                     self.animation_ax.add_patch(polygon_patch)
                     self.voxel_patches.append(polygon_patch)
+                    
+                    # Add region name at the center of the polyhedron
+                    if vertex_name not in ["source", "target"]:
+                        # Calculate the center of the polyhedron (average of vertices)
+                        if hasattr(vertex.convex_set, 'vertices') and len(vertex.convex_set.vertices) > 0:
+                            center = np.mean(vertex.convex_set.vertices, axis=0)
+                            text = self.animation_ax.text(
+                                center[0], center[1], 
+                                vertex_name,
+                                ha='center', va='center',
+                                fontsize=10, color='red', weight='bold'
+                            )
+                            self.voxel_patches.append(text)
+            
             elif self.base_dim == 3:
                 if isinstance(vertex.convex_set, Voxel):
                     if vertex_name not in self.uncovered_voxels.map or vertex_name in self.inflated_voxels.map:
@@ -820,7 +833,20 @@ class PolyhedronGraph(Graph):
                     polygon_patch_3d = self.plot_polyhedron(vertex, facecolor='red', alpha=0.2)
                     self.animation_ax.add_collection3d(polygon_patch_3d)
                     self.voxel_patches.append(polygon_patch_3d)
-        
+
+                    # Add region name at the center of the polyhedron
+                    if vertex_name not in ["source", "target"]:
+                        # Calculate the center of the polyhedron (average of vertices)
+                        if hasattr(vertex.convex_set, 'vertices') and len(vertex.convex_set.vertices) > 0:
+                            center = np.mean(vertex.convex_set.vertices, axis=0)
+                            text = self.animation_ax.text3D(
+                                center[0], center[1], center[2],
+                                vertex_name,
+                                ha='center', va='center',
+                                fontsize=10, color='red', weight='bold'
+                            )
+                            self.voxel_patches.append(text)
+                    
         # Update trajectory if provided
         if sol is not None and sol.trajectory is not None:
             # Extract trajectory points from vertices, handling both source and target 

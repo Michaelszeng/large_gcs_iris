@@ -140,8 +140,7 @@ class SamplingDominationChecker(DominationChecker):
             b. For each alternate path:
                 i. Solve convex restriction for the alternate path to that sample in a similar manner
                 ii. Check domination conditions
-        """
-        
+        """       
         is_dominated = True
         
         # Generate samples if samples don't already exist (and cache them in self._set_samples)
@@ -197,8 +196,6 @@ class SamplingDominationChecker(DominationChecker):
             candidate_sol, suceeded = self._compute_candidate_sol(
                 candidate_node, sample_vertex_name, sample
             )
-            print(f"candidate_node.vertex_path: {candidate_node.vertex_path}")
-            print(f"candidate_sol.vertex_path: {candidate_sol.vertex_path}")
             
             if not suceeded:
                 self._graph.remove_vertex(sample_vertex_name)
@@ -223,10 +220,10 @@ class SamplingDominationChecker(DominationChecker):
             is_dominated = False
             if sample_vertex_name in self._graph.vertices:
                 self._graph.remove_vertex(sample_vertex_name)
-            logger.debug(f"Sample {idx} reached new/cheaper by candidate path")
             break  # and return non-dominated
 
         self._graph.set_target(self._target)
+        print(f"path {candidate_node.vertex_path} is_dominated: {is_dominated}")
         return is_dominated
 
     def _is_single_dominated(

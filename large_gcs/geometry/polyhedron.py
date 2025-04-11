@@ -179,6 +179,10 @@ class Polyhedron(ConvexSet):
         return polyhedron
 
     def axis_aligned_bounding_box(self) -> tuple[np.ndarray, np.ndarray]:
+        """       
+        Note: this is already implemented in Drake Hyperrectangle class, though
+        official Drake implementation does not use parallel solve.
+        """
         if self.vertices is not None:
             return self.vertices.min(axis=0), self.vertices.max(axis=0)
         else:

@@ -208,7 +208,7 @@ class Graph:
         if name == "":
             name = len(self.vertices)
         if name in self.vertices:
-            logger.warning(f"Vertex {name} already exists in graph. Skipping...")
+            # logger.warning(f"Vertex {name} already exists in graph. Skipping...")
             return
 
         # Set default costs and constraints if necessary
@@ -272,7 +272,7 @@ class Graph:
         """Add an edge to the graph."""
         # Check if the edge already exists
         if edge.key in self.edges:
-            logger.warning(f"Edge {edge.key} already exists in graph. Skipping...")
+            # logger.warning(f"Edge {edge.key} already exists in graph. Skipping...")
             return self.edges[edge.key]
         
         e = copy(edge)

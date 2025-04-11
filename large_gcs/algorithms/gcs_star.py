@@ -219,12 +219,14 @@ class GcsStar(SearchAlgorithm):
         # Create a path from s to successor
         n_next = SearchNode.from_parent(child_vertex_name=successor, parent=n)
 
-        # We solve for the optimal path from s to successor to t for a few reasons
-        # here. First, we can check if the path is feasible at all. Second, 
-        # if it is feasible, we can use the resulting cost \tilde{f}(v) to order
-        # this path in the queue. Third, if SamplingDominationChecker is used and
-        # _should_use_candidate_sol_as_sample_as_sample is true, the optimal candidate
-        # solution is used as a sample for domination checking.
+        # We solve for the optimal trajectory following the path described by 
+        # searchnode n with a shortcut edge to t for a few reasons:
+        # First, we can check if the path is feasible at all. 
+        # Second, if it is feasible, we can use the resulting cost \tilde{f}(v) 
+        # to order this path in the queue. 
+        # Third, if SamplingDominationChecker is used and
+        # _should_use_candidate_sol_as_sample_as_sample is true, the optimal 
+        # candidate solution is used as a sample for domination checking.
         sol: ShortestPathSolution = self._cost_estimator.estimate_cost(
             self._graph,
             successor,
@@ -247,16 +249,15 @@ class GcsStar(SearchAlgorithm):
         )
 
         # Check domination condition
-        if (  # If going to target, do not need to check domination condition
-            successor != self._target_name
-            # and n.vertex_name != self._graph.source_name
+        if (
+            successor != self._target_name  # If going to target, do not need to check domination condition
             and self._is_dominated(n_next)
         ):
             # Path does not reach new areas, do not add to Q or S
-            logger.debug(f"Not added to Q: Path to is dominated")
+            logger.debug(f"Not added to Q: Path to {successor} is dominated")
             self.update_pruned(n_next)
             return
-        logger.debug(f"Added to Q: Path not dominated")
+        logger.debug(f"Added to Q: Path to {successor} not dominated")
         if (
             self._max_len_S_per_vertex != 0
             and len(self._S[n_next.vertex_name]) >= self._max_len_S_per_vertex
