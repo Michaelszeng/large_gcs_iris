@@ -26,6 +26,7 @@ docformatter = "^1.7.5"
 drake = "^1.28.0"
 manipulation = "^2024.5.25"
 nbformat = "^5.10.4"
+treelib = "^1.7.1"
 
 [tool.isort]
 profile = "black"

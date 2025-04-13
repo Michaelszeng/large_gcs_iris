@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon
 import numpy as np
 from itertools import product
-
+from enum import Enum
 from pydrake.all import Hyperrectangle as DrakeHyperrectangle
 from pydrake.all import RandomGenerator
 
@@ -12,12 +12,20 @@ from large_gcs.geometry.convex_set import ConvexSet
 logger = logging.getLogger(__name__)
 
 
+class VoxelStatus(Enum):
+    """
+    Status of a voxel in the voxel graph.
+    """
+    CLOSED = 0
+    ACTIVE = 1
+    OPEN = 2
+
 class Voxel(ConvexSet):
     """
     Voxel convex set defined by a center and a voxel size (side length).
     """
 
-    def __init__(self, center, voxel_size, num_knot_points, parent_region_name=None):
+    def __init__(self, center, voxel_size, num_knot_points, precision=6):
         """
         The voxel will have dimension equal to the dimension of `center`.
         
@@ -34,11 +42,13 @@ class Voxel(ConvexSet):
         ub_in_space = np.hstack([center + voxel_size / 2])
         self._set_in_space = DrakeHyperrectangle(lb_in_space, ub_in_space)
         
-        self._voxel_size = voxel_size
+        self.size = voxel_size
         self._num_knot_points = num_knot_points
         
-        # For PolyhedronGraph, the parent region is the IRIS region whose boundary the voxel was generated at
-        self._parent_region_name = parent_region_name
+        # Voxel Graph Variables
+        self.key = np.round(center, decimals=precision).tobytes()
+        self.status = VoxelStatus.OPEN
+        
         
     def get_samples(self, sample_in_space=True, n_samples=100) -> np.ndarray:
         """
@@ -123,16 +133,6 @@ class Voxel(ConvexSet):
     def center(self):
         """Center of the voxel in space; NOT of the underlying convex set."""
         return ((self._set.lb() + self._set.ub()) / 2)[:self.dim]
-    
-    @property
-    def size(self):
-        """Side length of voxel"""
-        return self._voxel_size
-    
-    @property
-    def parent_region_name(self):
-        """Parent region of the voxel"""
-        return self._parent_region_name
     
     def __eq__(self, other):
         """

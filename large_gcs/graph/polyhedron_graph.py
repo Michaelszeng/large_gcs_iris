@@ -10,8 +10,10 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import matplotlib.animation as animation
 from scipy.spatial import ConvexHull
-from typing import Set
+from typing import Set, Callable
 import numpy as np
+from collections import deque
+from treelib import Node, Tree
 from pydrake.all import (
     Constraint, 
     Cost,
@@ -38,7 +40,7 @@ from tqdm import tqdm
 from large_gcs.geometry.convex_set import ConvexSet
 from large_gcs.geometry.polyhedron import Polyhedron
 from large_gcs.geometry.point import Point
-from large_gcs.geometry.voxel import Voxel
+from large_gcs.geometry.voxel import Voxel, VoxelStatus
 from large_gcs.geometry.voxel_collision_checker import (
     VoxelCollisionChecker,
     VoxelSceneGraphCollisionChecker, 
@@ -56,47 +58,6 @@ from large_gcs.geometry.utils import ik
 
 logger = logging.getLogger(__name__)
 
-class VoxelSet:
-    """
-    "Set-like" datastructure to keep track of Voxel names (str) and Voxel 
-    objects. Allows for quick lookup of whether a voxel is in the set (by 
-    using the voxel's center's byte string as a hashable key).
-    """
-    map: Dict[str, Voxel]
-    voxel_centers: Set[bytes]
-    
-    def __init__(self):
-        self.map = {}
-        self.voxel_centers = set()
-        self._precision = 6
-    
-    def remove(self, voxel_name: str):
-        voxel = self.map.pop(voxel_name)
-        # Round to a reasonable precision before converting to bytes
-        rounded_center = np.round(voxel.center, decimals=self._precision)
-        self.voxel_centers.remove(rounded_center.tobytes())
-        
-    def add(self, voxel_name: str, voxel: Voxel):
-        self.map[voxel_name] = voxel
-        # Round to a reasonable precision before converting to bytes
-        rounded_center = np.round(voxel.center, decimals=self._precision)
-        self.voxel_centers.add(rounded_center.tobytes())
-        
-    def __contains__(self, voxel: Voxel) -> bool:
-        assert isinstance(voxel, Voxel), f"is type {type(voxel)}, should be Voxel"
-        # Round to a reasonable precision before converting to bytes
-        rounded_center = np.round(voxel.center, decimals=self._precision)
-        return rounded_center.tobytes() in self.voxel_centers
-    
-    def __str__(self) -> str:
-        if not self.map:
-            return "VoxelSet(empty)"
-        voxel_info = []
-        for name, voxel in self.map.items():
-            center_str = np.array2string(voxel.center, precision=self._precision, separator=', ')
-            voxel_info.append(f"{name}: {center_str}")
-        return f"VoxelSet(count={len(self.map)}, voxels=[{', '.join(voxel_info)}])"
-
 class PolyhedronGraph(Graph):
     def __init__(
         self,
@@ -106,7 +67,7 @@ class PolyhedronGraph(Graph):
         s: np.ndarray,
         t: np.ndarray,
         workspace: np.ndarray = None,
-        default_voxel_size: float = 0.2,
+        voxel_tree_max_depth: int = 4,
         num_knot_points_per_set: int = 2,
         const_edge_cost: float = 1e-4,
         voxel_collision_checker: VoxelCollisionChecker = None,
@@ -120,7 +81,7 @@ class PolyhedronGraph(Graph):
         self.t = t
         self.workspace = workspace
         self.domain = HPolyhedron.MakeBox(workspace[:, 0], workspace[:, 1])  # translate workspace to HPolyhedron
-        self.default_voxel_size = default_voxel_size
+        self.voxel_tree_max_depth = voxel_tree_max_depth
         self.num_knot_points = num_knot_points_per_set
         self._const_edge_cost = const_edge_cost
         self.voxel_collision_checker = voxel_collision_checker
@@ -145,10 +106,12 @@ class PolyhedronGraph(Graph):
         
         self.num_vertices = 0  # this var should only be modified by calls to get_new_vertex_name; it is only used for naming new reigons
         
-        self.uncovered_voxels = VoxelSet()  # Keep track of Voxel names (str) and Voxel objects that are not fully contained in a region
-        self.inflated_voxels = VoxelSet()  # Keep track of Voxel names (str) and Voxel objects that have been inflated into a region
-                                           # This is used to prevent inflating the same voxel multiple times in the edge case where a voxel is mistakenly determined not-in-collision, 
-                                           # resulting in the inflated region not fully covering the voxel, resulting in the voxel failing future "covered voxel" checks.
+        # Initalize voxel tree with a single voxel that covers the entire workspace
+        assert np.all(self.workspace[:, 0] == self.workspace[:, 1]), "For now, workspace must be equal sizes in all dimensions."
+        assert np.all(self.workspace[:, 0] == 0), "For now, workspace must be centered at origin."
+        self.voxel_tree_root = Voxel(np.zeros(self.base_dim), self.workspace[0, 1] - self.workspace[0, 0], self.num_knot_points)
+        self.voxel_tree = Tree()
+        self.voxel_tree.create_node(self.voxel_tree_root.key, self.voxel_tree_root.key, data=self.voxel_tree_root)
     
         sets = [Point(s), Point(t)]
         # Add convex sets to graph (Need to do this before generating edges)
@@ -166,6 +129,167 @@ class PolyhedronGraph(Graph):
         n = self.num_vertices
         self.num_vertices += 1
         return str(n)
+    
+    def find_covered_voxels(self, region: Polyhedron) -> None:
+        """
+        Find all voxels that are fully-contained by the given region.
+        
+        These voxels' status will be updated to CLOSED.
+        """
+        # Iterate through voxels in the tree level by level
+        q = deque([self.voxel_tree.get_node(self.voxel_tree.root)])
+        while q:
+            layer_size = len(q)  # Number of voxels at current layer
+            
+            # Iterate through non-closed voxels at current layer
+            for _ in range(layer_size):
+                voxel_id = q.popleft()
+                voxel = self.voxel_tree.get_node(voxel_id).data
+
+                vtxs = voxel.get_vertices()  # base_dim x num_vertices
+                num_vtxs = vtxs.shape[1]
+                
+                # Ensure not all vertices of voxel are contained in current region
+                if np.all(region.H @ vtxs <= np.tile(region.h, (num_vtxs, 1)).T + self.containment_tol):
+                    # print(f"Voxel {voxel.center} is fully contained in current region: {vertex_name}.")
+                    voxel.status = VoxelStatus.CLOSED
+                    continue
+    
+    def first_active_termination_condition(self, boundary_voxels: List[Voxel]) -> bool:
+        """
+        Termination condition for voxel tree search.
+        
+        Terminates after the first layer where a voxel is found that is
+        partially-contained and collision-free.
+        """
+        if boundary_voxels:
+            return True
+        return False
+    
+    def max_depth_termination_condition(self, boundary_voxels: List[Voxel]) -> bool:
+        """
+        Termination condition for voxel tree search.
+        
+        Terminates if all relevant voxels have been maximially subdivided.
+        Note that `find_polyhedron_boundary_voxels` will naturally terminate
+        when all relevant voxels have been maximally subdivided; thus this 
+        function doesn't need to do anything.
+        """
+        return False
+    
+    def find_polyhedron_boundary_voxels(self, region: Polyhedron, termination_condition: Callable[[List[Voxel]], bool]) -> List[Voxel]:
+        """
+        Search the voxel tree to find all voxels that are on the boundary of the 
+        given region and are not in collision.
+        
+        These voxels will be added to the graph as successors to the current region.
+        """
+        boundary_voxels = []  # List of voxels on the boundary of the region to be returned
+        
+        q = deque([self.voxel_tree.get_node(self.voxel_tree.root)])
+        while q:
+            layer_size = len(q)  # Number of voxels at current layer
+            
+            ####################################################################
+            # Process voxels at current layer (i.e. check partial containment, collision-free, etc.)
+            ####################################################################
+            # Iterate through non-closed voxels at current layer
+            layer_voxels = []  # Build list of voxels at current layer
+            voxel_progs = []
+            for _ in range(layer_size):
+                voxel_id = q.popleft()
+                voxel = self.voxel_tree.get_node(voxel_id).data
+
+                vtxs = voxel.get_vertices()  # base_dim x num_vertices
+                num_vtxs = vtxs.shape[1]
+                
+                layer_voxels.append(voxel)
+                
+                # Create MathematicalProgram that ensures voxel has non-empty intersection with region
+                prog = MathematicalProgram()
+                # Find x subject to: x is a convex combination of vertices, x is in region
+                x = prog.NewContinuousVariables(voxel.dim, "x")  # (base_dim,)
+                lam = prog.NewContinuousVariables(num_vtxs, "lam")  # (num_vertices,) - One lambda per vertex
+                # lam >= 0
+                for i in range(num_vtxs):
+                    prog.AddConstraint(lam[i] >= 0)
+                #1^T lam = 1  (i.e. components of lambda must sum to 1)
+                prog.AddLinearEqualityConstraint(np.ones((1, num_vtxs)), [1], lam)
+                # x is a convex combination of vertices
+                for d in range(voxel.dim):
+                    # x[d] = sum_{i=1}^{num_vtxs} lam[i] * vtxs[d, i]
+                    prog.AddConstraint(x[d] == vtxs[d, :] @ lam)
+                # x ∈ region
+                prog.AddConstraint(LinearConstraint(region.H, np.full((region.H.shape[0],), -np.inf), region.h), x)
+                voxel_progs.append(prog)
+                
+            # Solve all programs
+            # Then build list of voxels that are partially-contained by current region (and not fully-contained by any other region)
+            partially_contained_voxels = []  # partially_contained_voxels will be a subset of non_contained_voxels
+            voxel_solve_start = time.time()
+            results = SolveInParallel(voxel_progs) 
+            print(f"Time for voxel SolveInParallel: {time.time() - voxel_solve_start}")
+            for i, result in enumerate(results):
+                if result.is_success():  # Found a point in the intersection
+                    partially_contained_voxels.append(layer_voxels[i])
+                else:
+                    pass
+                    # print(f"No intersection found for voxel with center: {voxel.center}")
+            print(f"partially_contained_voxels: {list(map(lambda x: x.center, partially_contained_voxels))}")
+            
+            # Check if partially-contained voxels are collision-free
+            for voxel in partially_contained_voxels:
+                if self.voxel_collision_checker.check_voxel_collision_free(voxel):
+                    voxel.status = VoxelStatus.ACTIVE
+                    boundary_voxels.append(voxel)  # If so, this voxel should become ACTIVE and added to the graph as a successor to the current region
+                    
+            if termination_condition(boundary_voxels):
+                return boundary_voxels
+            
+            ####################################################################
+            # If we did not find any partially-contained voxels not in collision, 
+            # then search the next layer of the voxel tree, generating voxels
+            # at that layer if needed.
+            ####################################################################
+            for voxel in partially_contained_voxels:
+                # If voxel has no children and voxel tree depth is less than max depth, then subdivide the voxel further (generating new children)
+                if voxel.status != VoxelStatus.CLOSED and not self.voxel_tree.children(voxel_id) and self.voxel_tree.depth(voxel_id) < self.voxel_tree_max_depth-1:
+                    # Genenerate voxel's 2^self.base_dim children
+                    for i in range(2**self.base_dim):
+                        child = Voxel(voxel.center + voxel.size/2 * np.array([(i // 2**j) % 2 for j in range(self.base_dim)]), voxel.size/2, self.num_knot_points)
+                        self.voxel_tree.create_node(child.key, child.key, data=child, parent=voxel_id)
+                        
+                        # Before adding child to voxel tree, check if it is fully-contained in current region or any other region
+                        vtxs = child.get_vertices()  # base_dim x num_vertices
+                        num_vtxs = vtxs.shape[1]
+                        
+                        # Ensure not all vertices of voxel are contained in current region
+                        if np.all(region.H @ vtxs <= np.tile(region.h, (num_vtxs, 1)).T + self.containment_tol):
+                            # print(f"Voxel {voxel.center} is fully contained in current region: {vertex_name}.")
+                            voxel.status = VoxelStatus.CLOSED
+                            continue
+                        
+                        # Ensure not all vertices of voxel are contained in any other region
+                        for other_region in self.vertices.values():
+                            if isinstance(other_region.convex_set, Polyhedron):
+                                fully_contained_in_other_region = False
+                                if np.all(other_region.convex_set.H @ vtxs <= np.tile(other_region.convex_set.h, (num_vtxs, 1)).T + self.containment_tol):
+                                    fully_contained_in_other_region = True  
+                                    # print(f"Voxel {voxel.center} is fully contained in other region.
+                                    voxel.status = VoxelStatus.CLOSED
+                                    break
+                        if fully_contained_in_other_region:
+                            continue
+                
+                        # Only append child to queue if it is not fully-contained in any region
+                        q.append(child.key)
+                
+                # Append voxels in next layer to queue
+                for child_id in self.voxel_tree.children(voxel_id):
+                    child = self.voxel_tree.get_node(child_id).data
+                    if child.status != VoxelStatus.CLOSED:
+                        q.append(child_id)
+        
         
     def generate_successors(self, vertex_name: str) -> None:
         """Generates neighbors and adds them to the graph, also adds edges from
@@ -186,13 +310,15 @@ class PolyhedronGraph(Graph):
         else:
             if isinstance(self.vertices[vertex_name].convex_set, Voxel):
                 """
+                Inflate a new region around the voxel, updating statuses of any
+                voxels that got covered by the new region.
+                
                 1. Inflate a new region around the voxel
                 2. Switch the vertices[vertex_name] from containing the voxel to containing the new region
                 3. For `other_voxel` that is in `self.uncovered_voxels`:
                     if `other_voxel` is fully-contained in new region: remove from `self.uncovered_voxels`
                     then add edge between that voxel's parent region and the new region 
                     (this guarantees at least 1 edge is drawn to any newly generated region, since the new region is guaranteed to cover the voxel it was seeded with)
-                4. Continue in the instance(self.vertices[vertex_name].convex_set, Polyhedron) case below (now that the vertex contains a region)
                 """
                 voxel = self.vertices[vertex_name].convex_set
                 
@@ -244,105 +370,16 @@ class PolyhedronGraph(Graph):
                     )
 
             """
-            Now, handle generation of voxel successors of polyhedron
+            Now, handle search for voxel successors of polyhedron
             
-            1. Discretize boundary of polytope into partially-contained voxels (that are also not fully contained in any other region, and that don't already exist (in `self.uncovered_voxels`))
+            1. Find voxels on the boundary (i.e. partially-contained) of the polyhedron that are not in collision using adaptive-size voxel tree search
             2. Add each voxel to the graph
             3. Add a path (and solve its convex restriction) ending at each of those voxels to queue
             """
-            # Generate voxels on boundary of current vertex
-            # First, find axis-aligned bounding box of current region
-            region = self.vertices[vertex_name].convex_set  # Polyhedron
-            min_coords, max_coords = region.axis_aligned_bounding_box()
-            # Round min_coords down to the nearest voxel edge and max_coords up to the nearest voxel edge
-            min_coords = (np.floor((min_coords - 0.5 * self.default_voxel_size) / self.default_voxel_size) * self.default_voxel_size) + 0.5 * self.default_voxel_size
-            max_coords = (np.ceil((max_coords - 0.5 * self.default_voxel_size) / self.default_voxel_size) * self.default_voxel_size) + 0.5 * self.default_voxel_size
-            
-            # Generate voxels within bounding box
-            voxels = []
-            # Calculate number of voxels in each dimension
-            steps = np.ceil((max_coords - min_coords) / self.default_voxel_size).astype(int)
-            # Generate center points for voxels
-            for idx in np.ndindex(*steps):
-                center = min_coords + (np.array(idx) + 0.5) * self.default_voxel_size
-                if center.shape != min_coords.shape:  # Ensure correct dimensionality
-                    center = center[:len(min_coords)]
-                new_voxel = Voxel(center, self.default_voxel_size, self.num_knot_points, parent_region_name=vertex_name)
-                if new_voxel in self.uncovered_voxels or new_voxel in self.inflated_voxels:  # Voxels are considered equal if they have the same center
-                    continue
-                voxels.append(new_voxel)
-                
-            # Check partial containment of voxels
-            start = time.time()
-            non_contained_voxels = []
-            voxel_progs = []
-            for voxel in voxels:
-                vtxs = voxel.get_vertices()  # base_dim x num_vertices
-                num_vtxs = vtxs.shape[1]
-                
-                # Ensure not all vertices of voxel are contained in current region
-                if np.all(region.H @ vtxs <= np.tile(region.h, (num_vtxs, 1)).T + self.containment_tol):
-                    # print(f"Voxel {voxel.center} is fully contained in current region: {vertex_name}.")
-                    continue
-                
-                # Ensure not all vertices of voxel are contained in any other region
-                for other_region in self.vertices.values():
-                    if isinstance(other_region.convex_set, Polyhedron):
-                        fully_contained_in_other_region = False
-                        if np.all(other_region.convex_set.H @ vtxs <= np.tile(other_region.convex_set.h, (num_vtxs, 1)).T + self.containment_tol):
-                            fully_contained_in_other_region = True  
-                            # print(f"Voxel {voxel.center} is fully contained in other region.")
-                            break
-                if fully_contained_in_other_region:
-                    continue
-                
-                # Ensure all vertices of voxel are in workspace
-                if not np.all(self.domain.A() @ vtxs <= np.tile(self.domain.b(), (num_vtxs, 1)).T):
-                    # print(f"Voxel {voxel.center} is not in workspace.")
-                    continue
-                
-                # Ensure voxel doesn't intersect with obstacle
-                if not self.voxel_collision_checker.check_voxel_collision_free(voxel):
-                    # print(f"Voxel {voxel.center} intersects with obstacle.")
-                    continue
-                
-                non_contained_voxels.append(voxel)
-                
-                # Create MathematicalProgram that ensures voxel has non-empty intersection with region
-                prog = MathematicalProgram()
-                # Find x subject to: x is a convex combination of vertices, x is in region
-                x = prog.NewContinuousVariables(voxel.dim, "x")  # (base_dim,)
-                lam = prog.NewContinuousVariables(num_vtxs, "lam")  # (num_vertices,) - One lambda per vertex
-                # lam >= 0
-                for i in range(num_vtxs):
-                    prog.AddConstraint(lam[i] >= 0)
-                #1^T lam = 1  (i.e. components of lambda must sum to 1)
-                prog.AddLinearEqualityConstraint(np.ones((1, num_vtxs)), [1], lam)
-                # x is a convex combination of vertices
-                for d in range(voxel.dim):
-                    # x[d] = sum_{i=1}^{num_vtxs} lam[i] * vtxs[d, i]
-                    prog.AddConstraint(x[d] == vtxs[d, :] @ lam)
-                # x ∈ region
-                prog.AddConstraint(LinearConstraint(region.H, np.full((region.H.shape[0],), -np.inf), region.h), x)
-                voxel_progs.append(prog)
-                
-            # Solve all programs
-            partially_contained_voxels = []
-            voxel_solve_start = time.time()
-            results = SolveInParallel(voxel_progs) 
-            print(f"Time for voxel SolveInParallel: {time.time() - voxel_solve_start}")
-            for i, result in enumerate(results):
-                if result.is_success():  # Found a point in the intersection
-                    partially_contained_voxels.append(non_contained_voxels[i])
-                else:
-                    pass
-                    # print(f"No intersection found for voxel with center: {voxel.center}")
-            print(f"Time taken to solve voxels: {time.time() - start}")
-            
-            print(f"partially_contained_voxels: {list(map(lambda x: x.center, partially_contained_voxels))}")
+            polyhedron_boundary_voxels = self.find_polyhedorn_boundary_voxels(self.vertices[vertex_name].convex_set)
             
             # Add voxel successors to neighbors
-            for voxel in partially_contained_voxels:
+            for voxel in polyhedron_boundary_voxels:
                 neighbors.append((
                     vertex_name,
                     self.get_new_vertex_name(),
@@ -355,10 +392,9 @@ class PolyhedronGraph(Graph):
             #     self.add_vertex(vertex, f"test_voxel_{self.get_new_region_name()}")
             # self.update_animation(None)
             # time.sleep(5)
-                
             # return
-
-                
+            
+        # Add neighbors to graph
         for neighbor_data in neighbors:
             self._generate_neighbor(*neighbor_data)
             
