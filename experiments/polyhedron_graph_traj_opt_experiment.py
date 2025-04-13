@@ -48,11 +48,11 @@ TEST_SCENE = "3DOFFLIPPER"
 if TEST_SCENE == "2DOFFLIPPER":
     s = np.array([0, 0])
     t = np.array([-1, 1.7])
-    voxel_size = 0.25
+    voxel_tree_max_depth = 4
 elif TEST_SCENE == "3DOFFLIPPER":
     s = np.array([0.18, -0.1, -0.78])
     t = np.array([-1.7, 1.0, 1.5])
-    voxel_size = 0.5
+    voxel_tree_max_depth = 4
 else:
     raise ValueError(f"TEST_SCENE {TEST_SCENE} not supported yet.")
 rng = RandomGenerator(1234)
@@ -157,7 +157,7 @@ def main(cfg: OmegaConf) -> None:
         s = s,
         t = t,
         workspace = workspace,
-        default_voxel_size = voxel_size,
+        voxel_tree_max_depth = voxel_tree_max_depth,
         const_edge_cost=cfg.const_edge_cost,
         voxel_collision_checker=VoxelSceneGraphCollisionChecker(collision_checker_params),
     )
