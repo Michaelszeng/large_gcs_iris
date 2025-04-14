@@ -52,15 +52,15 @@ def main(cfg: OmegaConf) -> None:
     if d == 2:
         # 2D Test
         # obstacles = [Polyhedron.from_vertices([[2,0],[0,2],[2,2]]), Polyhedron.from_vertices([[-2,-0.3],[-0.3,-2],[-2,-2]])]
-        obstacles = [Polyhedron.from_vertices([[0,0],[2,0],[0,2],[2,2]])]
-        # obstacles = [Polyhedron.from_vertices([[0,0],[3.1,0],[0,3.1],[3.1,3.1]])]  # NO SOLUTION
+        # obstacles = [Polyhedron.from_vertices([[0,0],[2,0],[0,2],[2,2]])]
+        obstacles = [Polyhedron.from_vertices([[0,0],[3.1,0],[0,3.1],[3.1,3.1]])]  # NO SOLUTION
         workspace = np.array([[-4, 4],    # workspace x-lim
                               [-4, 4]])   # workspace y-lim
         g = PolyhedronGraph(
             s = np.array([-3, -3]),
             t = np.array([3.5, 3.5]),
             workspace = workspace,
-            voxel_tree_max_depth = 4,
+            voxel_tree_max_depth = 6,
             const_edge_cost=cfg.const_edge_cost,
             voxel_collision_checker=VoxelCollisionCheckerConvexObstacles(obstacles, workspace),
         )
@@ -75,7 +75,7 @@ def main(cfg: OmegaConf) -> None:
             s = np.array([-1, -1, -1]),
             t = np.array([1.9, 1.9, 1.9]),
             workspace = workspace,
-            voxel_tree_max_depth = 4,
+            voxel_tree_max_depth = 46,
             const_edge_cost=cfg.const_edge_cost,
             voxel_collision_checker=VoxelCollisionCheckerConvexObstacles(obstacles, workspace),
         )

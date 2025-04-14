@@ -13,6 +13,7 @@ from scipy.spatial import ConvexHull
 from typing import Set, Callable
 import numpy as np
 from collections import deque
+from itertools import product
 from treelib import Node, Tree
 from pydrake.all import (
     Constraint, 
@@ -147,13 +148,9 @@ class PolyhedronGraph(Graph):
         if check_other_regions:
             for other_region in self.vertices.values():
                 if isinstance(other_region.convex_set, Polyhedron):
-                    fully_contained_in_other_region = False
-                if np.all(other_region.convex_set.H @ vtxs <= np.tile(other_region.convex_set.h, (num_vtxs, 1)).T + self.containment_tol):
-                    fully_contained_in_other_region = True  
-                    break
-            if fully_contained_in_other_region:
-                return True
-            
+                    if np.all(other_region.convex_set.H @ vtxs <= np.tile(other_region.convex_set.h, (num_vtxs, 1)).T + self.containment_tol):
+                        return True
+
         return False
     
     def first_active_termination_condition(self, boundary_voxels: List[Voxel]) -> bool:
@@ -199,8 +196,8 @@ class PolyhedronGraph(Graph):
             voxel_progs = []
             for _ in range(layer_size):
                 voxel_node = q.popleft()
-                voxel_id = voxel_node.identifier
                 voxel = voxel_node.data
+                voxel_id = voxel.key
 
                 vtxs = voxel.get_vertices()  # base_dim x num_vertices
                 num_vtxs = vtxs.shape[1]
@@ -241,16 +238,17 @@ class PolyhedronGraph(Graph):
                     partially_contained_voxels.append(layer_voxels[i])
                 else:
                     pass
-                    # print(f"No intersection found for voxel with center: {voxel.center}")
-            print(f"partially_contained_voxels: {list(map(lambda x: x.center, partially_contained_voxels))}")
+                    # print(f"No intersection found for voxel with center: {voxel.center}"
             
             # Check if partially-contained voxels are collision-free
             for voxel in partially_contained_voxels:
                 if self.voxel_collision_checker.check_voxel_collision_free(voxel):
+                    print(f"voxel {voxel.center} with size {voxel.size} is collision-free")
                     voxel.status = VoxelStatus.ACTIVE
                     boundary_voxels.append(voxel)  # If so, this voxel should become ACTIVE and added to the graph as a successor to the current region
                     
             if termination_condition(boundary_voxels):
+                print(f"boundary_voxels: {list(map(lambda x: x.center, boundary_voxels))}")
                 return boundary_voxels
             
             ####################################################################
@@ -259,26 +257,32 @@ class PolyhedronGraph(Graph):
             # at that layer if needed.
             ####################################################################
             for voxel in partially_contained_voxels:
+                voxel_id = voxel.key
                 # If voxel has no children and voxel tree depth is less than max depth, then subdivide the voxel further (generating new children)
                 if voxel.status != VoxelStatus.CLOSED and not self.voxel_tree.children(voxel_id) and self.voxel_tree.depth(voxel_id) < self.voxel_tree_max_depth-1:
                     # Genenerate voxel's 2^self.base_dim children
-                    for i in range(2**self.base_dim):
-                        child = Voxel(voxel.center + voxel.size/2 * np.array([(i // 2**j) % 2 for j in range(self.base_dim)]), voxel.size/2, self.num_knot_points)
-                        self.voxel_tree.create_node(child.key, child.key, data=child, parent=voxel_id)
+                    for direction in product([-1, 1], repeat=self.base_dim):
+                        direction_array = np.array(direction, dtype=float)
+                        offset = (voxel.size / 4) * direction_array  # The offset is (voxel.size/4) in each dimension multiplied by the direction factor.
+                        child_center = voxel.center + offset
+                        print(f"Generating child voxel with center {child_center}.")
+                        child_voxel = Voxel(child_center, voxel.size / 2, self.num_knot_points)
+                        child = self.voxel_tree.create_node(child_voxel.key, child_voxel.key, data=child_voxel, parent=voxel_id)
                         
                         # Before adding child to voxel tree, check if it is fully-contained in current region or any other region
-                        if self.check_voxel_fully_contained_in_region(child, region):
-                            child.status = VoxelStatus.CLOSED
+                        if self.check_voxel_fully_contained_in_region(child_voxel, region):
+                            child_voxel.status = VoxelStatus.CLOSED
                             continue
                 
                         # Only append child to queue if it is not fully-contained in any region
-                        q.append(child.key)
+                        q.append(child)
                 
                 # Append voxels in next layer to queue
-                for child_id in self.voxel_tree.children(voxel_id):
-                    child = self.voxel_tree.get_node(child_id).data
-                    if child.status != VoxelStatus.CLOSED:
-                        q.append(child_id)
+                self.voxel_tree.show()
+                for child in self.voxel_tree.children(voxel_id):
+                    child_voxel = child.data
+                    if child_voxel.status != VoxelStatus.CLOSED:
+                        q.append(child)
                         
         return boundary_voxels
 
@@ -511,24 +515,24 @@ class PolyhedronGraph(Graph):
     ############################################################################
     ### PLOTTING ###
     ############################################################################
-    def plot_voxel(self, vertex, fill=False, facecolor='yellow', alpha=0.3):
+    def plot_voxel(self, voxel, fill=False, facecolor='yellow', edgecolor='magenta', alpha=0.3):
         if self.base_dim == 2:
-            center = vertex.convex_set.center
-            size = vertex.convex_set.size
+            center = voxel.center
+            size = voxel.size
             if fill:
                 rect = plt.Rectangle(
                     center - size / 2, size, size,
-                    fill=fill, facecolor=facecolor, alpha=alpha, edgecolor='magenta', linewidth=1
+                    fill=fill, facecolor=facecolor, alpha=alpha, edgecolor=edgecolor, linewidth=1
                 )
             else:
                 rect = plt.Rectangle(
                     center - size / 2, size, size,
-                    fill=fill, edgecolor='magenta', linewidth=1
+                    fill=fill, edgecolor=edgecolor, linewidth=1
                 )
             return rect
         elif self.base_dim == 3:
-            center = vertex.convex_set.center
-            size = vertex.convex_set.size
+            center = voxel.center
+            size = voxel.size
             r = size / 2
             
             # Create vertices for the 6 faces of the cube
@@ -574,13 +578,13 @@ class PolyhedronGraph(Graph):
             return cube
             
         
-    def plot_polyhedron(self, vertex, facecolor='red', alpha=0.2):
+    def plot_polyhedron(self, polyhedron, facecolor='red', alpha=0.2):
         if self.base_dim == 2:
-            vertices = vertex.convex_set.vertices
+            vertices = polyhedron.vertices
             polygon_patch = plt.Polygon(vertices, closed=True, facecolor=facecolor, alpha=alpha, edgecolor='magenta', linewidth=1)
             return polygon_patch
         elif self.base_dim == 3:
-            vertices = vertex.convex_set.vertices
+            vertices = polyhedron.vertices
             hull = ConvexHull(vertices)
             faces = [vertices[s] for s in hull.simplices]
             polygon_patch_3d = Poly3DCollection(
@@ -767,7 +771,7 @@ class PolyhedronGraph(Graph):
                 )
                 
             # Initialize empty collections for voxels
-            self.voxel_patches = []
+            self.patches = []
         
         ########################################################################
         ### PLOTTED AT EACH FRAME ###
@@ -793,10 +797,36 @@ class PolyhedronGraph(Graph):
                     #     color='grey', alpha=0.5
                     # )
                 
-        # Remove old voxel patches
-        for patch in self.voxel_patches:
+        # Remove old polyhedron and voxel patches
+        for patch in self.patches:
             patch.remove()
-        self.voxel_patches = []
+        self.patches = []
+        
+        # Add voxel patches for all voxels in the voxel tree
+        for voxel_node in self.voxel_tree.all_nodes_itr():
+            voxel = voxel_node.data
+            if voxel.status == VoxelStatus.CLOSED:
+                fill = True
+                face_color = 'gray'
+            elif voxel.status == VoxelStatus.ACTIVE:
+                fill = True
+                face_color = 'magenta'
+            else:  # voxel.status == VoxelStatus.OPEN
+                fill = False
+                face_color = None
+            rect = self.plot_voxel(voxel, fill=fill, facecolor=face_color)
+            ax.add_patch(rect)
+            self.patches.append(rect)
+            
+            # # Add voxel name as text in the center of the voxel
+            # center = voxel.center
+            # text = self.animation_ax.text(
+            #     center[0], center[1], 
+            #     voxel_node.key,
+            #     ha='center', va='center',
+            #     fontsize=8, color='black'
+            # )
+            # self.patches.append(text)
         
         # Add polyhedron and voxel patches
         for vertex_name, vertex in self.vertices.items():
@@ -804,75 +834,75 @@ class PolyhedronGraph(Graph):
                 if isinstance(vertex.convex_set, Voxel):
                     if vertex.convex_set.status == VoxelStatus.CLOSED:
                         continue
-                    rect = self.plot_voxel(vertex, fill=False)
-                    self.animation_ax.add_patch(rect)
-                    self.voxel_patches.append(rect)
+                    rect = self.plot_voxel(vertex.convex_set, fill=False)
+                    ax.add_patch(rect)
+                    self.patches.append(rect)
                     
                     # Add voxel name as text in the center of the voxel
                     if vertex_name not in ["source", "target"]:
                         center = vertex.convex_set.center
-                        text = self.animation_ax.text(
+                        text = ax.text(
                             center[0], center[1], 
                             vertex_name,
                             ha='center', va='center',
                             fontsize=8, color='black'
                         )
-                        self.voxel_patches.append(text)
+                        self.patches.append(text)
                     
                 elif isinstance(vertex.convex_set, Polyhedron):
-                    polygon_patch = self.plot_polyhedron(vertex, facecolor='red', alpha=0.2)
-                    self.animation_ax.add_patch(polygon_patch)
-                    self.voxel_patches.append(polygon_patch)
+                    polygon_patch = self.plot_polyhedron(vertex.convex_set, facecolor='red', alpha=0.2)
+                    ax.add_patch(polygon_patch)
+                    self.patches.append(polygon_patch)
                     
                     # Add region name at the center of the polyhedron
                     if vertex_name not in ["source", "target"]:
                         # Calculate the center of the polyhedron (average of vertices)
                         if hasattr(vertex.convex_set, 'vertices') and len(vertex.convex_set.vertices) > 0:
                             center = np.mean(vertex.convex_set.vertices, axis=0)
-                            text = self.animation_ax.text(
+                            text = ax.text(
                                 center[0], center[1], 
                                 vertex_name,
                                 ha='center', va='center',
                                 fontsize=10, color='red', weight='bold'
                             )
-                            self.voxel_patches.append(text)
+                            self.patches.append(text)
             
             elif self.base_dim == 3:
                 if isinstance(vertex.convex_set, Voxel):
                     if vertex.convex_set.status == VoxelStatus.CLOSED:
                         continue
-                    cube = self.plot_voxel(vertex, fill=False)
-                    self.animation_ax.add_collection3d(cube)
-                    self.voxel_patches.append(cube)
+                    cube = self.plot_voxel(vertex.convex_set, fill=False)
+                    ax.add_collection3d(cube)
+                    self.patches.append(cube)
                     
                     # Add voxel name as text in the center of the voxel
                     if vertex_name not in ["source", "target"]:
                         center = vertex.convex_set.center
-                        text = self.animation_ax.text3D(
+                        text = ax.text3D(
                             center[0], center[1], center[2],
                             vertex_name,
                             ha='center', va='center',
                             fontsize=8, color='black'
                         )
-                        self.voxel_patches.append(text)
+                        self.patches.append(text)
                     
                 elif isinstance(vertex.convex_set, Polyhedron):
-                    polygon_patch_3d = self.plot_polyhedron(vertex, facecolor='red', alpha=0.2)
-                    self.animation_ax.add_collection3d(polygon_patch_3d)
-                    self.voxel_patches.append(polygon_patch_3d)
+                    polygon_patch_3d = self.plot_polyhedron(vertex.convex_set, facecolor='red', alpha=0.2)
+                    ax.add_collection3d(polygon_patch_3d)
+                    self.patches.append(polygon_patch_3d)
 
                     # Add region name at the center of the polyhedron
                     if vertex_name not in ["source", "target"]:
                         # Calculate the center of the polyhedron (average of vertices)
                         if hasattr(vertex.convex_set, 'vertices') and len(vertex.convex_set.vertices) > 0:
                             center = np.mean(vertex.convex_set.vertices, axis=0)
-                            text = self.animation_ax.text3D(
+                            text = ax.text3D(
                                 center[0], center[1], center[2],
                                 vertex_name,
                                 ha='center', va='center',
                                 fontsize=10, color='red', weight='bold'
                             )
-                            self.voxel_patches.append(text)
+                            self.patches.append(text)
                     
         # Update trajectory if provided
         if sol is not None and sol.trajectory is not None:
@@ -915,25 +945,25 @@ class PolyhedronGraph(Graph):
                 for vertex_name in sol.vertex_path:
                     if vertex_name not in ["source", "target"]:
                         if isinstance(self.vertices[vertex_name].convex_set, Voxel):
-                            rect = self.plot_voxel(self.vertices[vertex_name], fill=True, facecolor='green', alpha=0.5)
-                            self.animation_ax.add_patch(rect)
-                            self.voxel_patches.append(rect)
+                            rect = self.plot_voxel(self.vertices[vertex_name].convex_set, fill=True, facecolor='green', alpha=0.5)
+                            ax.add_patch(rect)
+                            self.patches.append(rect)
                         elif isinstance(self.vertices[vertex_name].convex_set, Polyhedron):
-                            polygon_patch = self.plot_polyhedron(self.vertices[vertex_name], facecolor='yellow', alpha=0.3)
-                            self.animation_ax.add_patch(polygon_patch)
-                            self.voxel_patches.append(polygon_patch)
+                            polygon_patch = self.plot_polyhedron(self.vertices[vertex_name].convex_set, facecolor='yellow', alpha=0.3)
+                            ax.add_patch(polygon_patch)
+                            self.patches.append(polygon_patch)
                 
                 # Add vertex path text
-                self.path_text = self.animation_ax.text(
+                self.path_text = ax.text(
                     0.05, 0.95,  # Position in axes coordinates (5% from left, 95% from bottom)
                     f'Path: {path_str}',
-                    transform=self.animation_ax.transAxes,  # Use axes coordinates
+                    transform=ax.transAxes,  # Use axes coordinates
                     verticalalignment='top',
                     bbox=dict(facecolor='white', alpha=0.7, edgecolor='none'),
                     fontsize=8,
                     wrap=True
                 )
-                self.voxel_patches.append(self.path_text)  # Add to patches so it gets cleaned up
+                self.patches.append(self.path_text)  # Add to patches so it gets cleaned up
             elif self.base_dim == 3:
                 # Set trajectory points
                 # Main path (all but last segment)
@@ -947,25 +977,25 @@ class PolyhedronGraph(Graph):
                 for vertex_name in sol.vertex_path:
                     if vertex_name not in ["source", "target"]:
                         if isinstance(self.vertices[vertex_name].convex_set, Voxel):
-                            cube = self.plot_voxel(self.vertices[vertex_name], fill=True, facecolor='green', alpha=0.5)
-                            self.animation_ax.add_collection3d(cube)
-                            self.voxel_patches.append(cube)
+                            cube = self.plot_voxel(self.vertices[vertex_name].convex_set, fill=True, facecolor='green', alpha=0.5)
+                            ax.add_collection3d(cube)
+                            self.patches.append(cube)
                         elif isinstance(self.vertices[vertex_name].convex_set, Polyhedron):
-                            polygon_patch_3d = self.plot_polyhedron(self.vertices[vertex_name], facecolor='yellow', alpha=0.3)
-                            self.animation_ax.add_collection3d(polygon_patch_3d)
-                            self.voxel_patches.append(polygon_patch_3d)
+                            polygon_patch_3d = self.plot_polyhedron(self.vertices[vertex_name].convex_set, facecolor='yellow', alpha=0.3)
+                            ax.add_collection3d(polygon_patch_3d)
+                            self.patches.append(polygon_patch_3d)
                 
                 # Add vertex path text
-                self.path_text = self.animation_ax.text2D(
+                self.path_text = ax.text2D(
                     0.05, 0.95,
                     f'Path: {path_str}',
-                    transform=self.animation_ax.transAxes,
+                    transform=ax.transAxes,
                     verticalalignment='top',
                     bbox=dict(facecolor='white', alpha=0.7, edgecolor='none'),
                     fontsize=8,
                     wrap=True
                 )
-                self.voxel_patches.append(self.path_text)  # Add to patches so it gets cleaned up
+                self.patches.append(self.path_text)  # Add to patches so it gets cleaned up
             
         if self.base_dim == 2:
             ax.set_aspect('equal')

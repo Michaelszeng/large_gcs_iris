@@ -93,7 +93,7 @@ class VoxelCollisionCheckerConvexObstacles(VoxelCollisionChecker):
         
         self.rng = RandomGenerator(1234)
         
-    def check_voxel_collision_free(self, voxel: Voxel, use_intersection: bool = False, num_samples: int = 50) -> bool:
+    def check_voxel_collision_free(self, voxel: Voxel, use_intersection: bool = True, num_samples: int = 50) -> bool:
         """
         Check if a voxel is collision free.
         
