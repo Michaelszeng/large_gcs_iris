@@ -205,6 +205,8 @@ class SamplingDominationChecker(DominationChecker):
             any_single_domination = False
             for alt_i, alt_n in enumerate(alternate_nodes):
                 alt_sol = self._solve_conv_res_to_sample(alt_n, sample_vertex_name, sample)
+                # print(f"alt_sol.cost: {alt_sol.cost}")
+                # print(f"candidate_sol.cost: {candidate_sol.cost}")
                 if self._is_single_dominated(candidate_sol, alt_sol):
                     self._graph.remove_vertex(sample_vertex_name)
                     any_single_domination = True

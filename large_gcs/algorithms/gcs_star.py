@@ -21,6 +21,7 @@ from large_gcs.domination_checkers.sampling_domination_checker import (
 from large_gcs.graph.graph import Graph, ShortestPathSolution
 from large_gcs.graph.polyhedron_graph import PolyhedronGraph
 from large_gcs.geometry.voxel import Voxel, VoxelStatus
+from large_gcs.geometry.polyhedron import Polyhedron
 
 logger = logging.getLogger(__name__)
 # tracemalloc.start()
@@ -159,14 +160,25 @@ class GcsStar(SearchAlgorithm):
         """Runs one iteration of the search algorithm."""
         n: SearchNode = self.pop_node_from_Q()
         
-        # Janky way to skip covered voxels in the PolyhedronGraph "Best Voxel Inflation" algorithm
+        # Skip polyhedrons and CLOSED voxels in the PolyhedronGraph "Best Voxel Inflation" algorithm
         if isinstance(self._graph, PolyhedronGraph):
-            if isinstance(self._graph.vertices[n.vertex_name].convex_set, Voxel) and self._graph.vertices[n.vertex_name].convex_set.status == VoxelStatus.CLOSED:  # i.e. node ends at a covered voxel
+            if not isinstance(self._graph.vertices[n.vertex_name].convex_set, Voxel):
+                if n.vertex_name not in [self._graph.source_name, self._graph.target_name, self._graph.first_region_name]:
+                    print(f"n.vertex_name: {n.vertex_name}")
+                    print(f"Skipping node popped from Q because it ends at a non-voxel: {n.vertex_name}")
+                    return
+            elif self._graph.vertices[n.vertex_name].convex_set.status == VoxelStatus.CLOSED:
+                print(f"n.vertex_name: {n.vertex_name}")
                 print(f"Skipping node popped from Q because it ends at a CLOSED voxel: {n.vertex_name}")
                 return
         
-        print(f"Popped node from Q with priority {n.priority}: {n.vertex_path}")
-        
+        print(f"""Popped node from Q with priority {n.priority}: {[
+            ('v' + vtx) if vtx in self._graph.vertices and isinstance(self._graph.vertices[vtx].convex_set, Voxel)
+            else ('r' + vtx) if vtx in self._graph.vertices and isinstance(self._graph.vertices[vtx].convex_set, Polyhedron)
+            else vtx
+            for vtx in n.vertex_path
+        ]}""")
+            
         if self._vis_params.animate:
             self._graph.update_animation(n.sol)
         
