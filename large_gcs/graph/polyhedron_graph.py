@@ -209,10 +209,10 @@ class PolyhedronGraph(Graph):
                 vtxs = voxel.get_vertices()  # base_dim x num_vertices
                 num_vtxs = vtxs.shape[1]
                 
-                # Ensure voxel did not get fully contained in newly-generated region
-                if self.check_voxel_fully_contained_in_region(voxel, region, check_other_regions=False):
-                    voxel.status = VoxelStatus.CLOSED
-                    continue
+                # # Ensure voxel did not get fully contained in newly-generated region
+                # if self.check_voxel_fully_contained_in_region(voxel, region, check_other_regions=False):
+                #     voxel.status = VoxelStatus.CLOSED
+                #     continue
                 
                 layer_voxels.append(voxel)
                 
@@ -295,7 +295,7 @@ class PolyhedronGraph(Graph):
 
     def draw_edges_to_new_region(self, vertex_name: str, region: Polyhedron) -> None:
         """
-        Detect inersections between newly generated region and any other regions
+        Detect intersections between newly generated region and any other regions
         and add respective edges to graph.
         """
         region_progs = []
@@ -368,9 +368,18 @@ class PolyhedronGraph(Graph):
                 # Swap the voxel in the graph with the new region
                 self.vertices[vertex_name].convex_set = polyhedron
                 
+                # CLOSE the inflated voxel
+                voxel.status = VoxelStatus.CLOSED
+                
                 # Draw edges to newly generated region
                 self.draw_edges_to_new_region(vertex_name, polyhedron)
                 
+                # Check if any non-CLOSED voxels were covered by the new region (if so, update their status to CLOSED)
+                for voxel_node in self.voxel_tree.leaves():
+                    voxel = voxel_node.data
+                    if voxel.status != VoxelStatus.CLOSED and self.check_voxel_fully_contained_in_region(voxel, polyhedron, check_other_regions=False):
+                        voxel.status = VoxelStatus.CLOSED
+            
             else:  # For safety
                 assert vertex_name == self.first_region_name, "generate_successors received a non-voxel vertex that is not the first region -- this is unexpected behavior. Please investigate."
 
