@@ -49,6 +49,8 @@ class Voxel(ConvexSet):
         self.key = np.round(center, decimals=precision).tobytes()
         self.status = VoxelStatus.OPEN
         
+        self.rng = RandomGenerator(1234)
+        
         
     def get_samples(self, sample_in_space=True, n_samples=100) -> np.ndarray:
         """
@@ -59,13 +61,12 @@ class Voxel(ConvexSet):
         """
         if sample_in_space:
             samples = []
-            generator = RandomGenerator()
             try:
-                samples.append(self.set_in_space.UniformSample(generator))
+                samples.append(self.set_in_space.UniformSample(self.rng))
                 logger.debug(f"Sampled 1 points from convex set")
                 for i in range(n_samples - 1):
                     # Hyperrectangle doesn't need previous sample or mixing steps
-                    samples.append(self.set_in_space.UniformSample(generator))
+                    samples.append(self.set_in_space.UniformSample(self.rng))
                     logger.debug(f"Sampled {i+2} points from convex set")
             except (RuntimeError, ValueError) as e:
                 chebyshev_center = self.set.ChebyshevCenter()

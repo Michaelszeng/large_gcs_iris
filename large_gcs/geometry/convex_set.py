@@ -39,22 +39,21 @@ class ConvexSet(ABC):
 
     def get_samples(self, n_samples=100) -> np.ndarray:
         samples = []
-        generator = RandomGenerator()
         # Setting the initial guess made sampling in the contact set fail
         # initial_guess = self.set.MaybeGetFeasiblePoint()
         # logger.debug(f"Initial guess for sampling: {initial_guess}")
         try:
-            # samples.append(self.set.UniformSample(generator, initial_guess))
-            samples.append(self.set.UniformSample(generator))
+            # samples.append(self.set.UniformSample(self.rng, initial_guess))
+            samples.append(self.set.UniformSample(self.rng))
             logger.debug(f"Sampled 1 points from convex set")
             for i in range(n_samples - 1):
                 if isinstance(self.set, Hyperrectangle):
                     # Hyperrectangle doesn't need previous sample or mixing steps
-                    samples.append(self.set.UniformSample(generator))
+                    samples.append(self.set.UniformSample(self.rng))
                 else:
                     samples.append(
                         self.set.UniformSample(
-                            generator,
+                            self.rng,
                             previous_sample=samples[-1],
                             mixing_steps=100,
                         )

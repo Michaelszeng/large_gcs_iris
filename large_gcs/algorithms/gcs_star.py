@@ -135,6 +135,10 @@ class GcsStar(SearchAlgorithm):
             logger.error(
                 f"{self.__class__.__name__} failed to find a path to the target."
             )
+            
+            # Save animation video
+            self._graph.compile_animation()
+        
             # Keep final solution plot open
             if self._vis_params.animate:
                 self._graph.update_animation(block=True)
@@ -170,11 +174,9 @@ class GcsStar(SearchAlgorithm):
         if isinstance(self._graph, PolyhedronGraph):
             if not isinstance(self._graph.vertices[n.vertex_name].convex_set, Voxel):
                 if n.vertex_name not in [self._graph.source_name, self._graph.target_name, self._graph.first_region_name]:
-                    print(f"n.vertex_name: {n.vertex_name}")
                     print(f"Skipping node popped from Q because it ends at a non-voxel: {n.vertex_name}")
                     return
-            elif self._graph.vertices[n.vertex_name].convex_set.status == VoxelStatus.CLOSED:
-                print(f"n.vertex_name: {n.vertex_name}")
+            elif self._graph.vertices[n.vertex_name].convex_set.status == VoxelStatus.CLOSED or not self._graph.voxel_tree.get_node(self._graph.vertices[n.vertex_name].convex_set.key).is_leaf():
                 print(f"Skipping node popped from Q because it ends at a CLOSED voxel: {n.vertex_name}")
                 return
         
@@ -214,7 +216,6 @@ class GcsStar(SearchAlgorithm):
         for v in successors:
             if not self._allow_cycles and v in n.vertex_path:
                 continue
-            
             self._explore_successor(n, v)
 
     @profile_method
@@ -284,12 +285,6 @@ class GcsStar(SearchAlgorithm):
         self.add_node_to_S(n_next)
         self.push_node_on_Q(n_next)
         self.update_visited(n_next)  # Purely for logging
-
-        # # Early Termination
-        # if self._terminate_early and successor == self._target_name:
-        #     logger.info(f"EARLY TERMINATION: Visited path to target.")
-        #     self._save_metrics(n_next, 0, override_save=True)
-        #     return n_next.sol
 
     @profile_method
     def _is_dominated(self, n: SearchNode) -> bool:

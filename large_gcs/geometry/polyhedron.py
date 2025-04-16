@@ -73,7 +73,7 @@ class Polyhedron(ConvexSet):
         self._h_polyhedron = HPolyhedron(block_diag(*([H] * num_knot_points)), np.tile(h, num_knot_points))
         self._num_knot_points = num_knot_points
         
-        self.rng = RandomGenerator()
+        self.rng = RandomGenerator(1234)
 
     def create_nullspace_set(self):
         if self._h_polyhedron_in_space.IsEmpty():

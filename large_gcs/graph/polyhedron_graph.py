@@ -141,7 +141,8 @@ class PolyhedronGraph(Graph):
     
     def check_voxel_fully_contained_in_region(self, voxel: Voxel, region: Polyhedron, check_other_regions: bool = True) -> bool:
         """
-        Check if all vertices of a voxel are contained in a region.
+        Check full containment of voxel in a region, i.e. if all vertices of 
+        voxel are contained in a region.
         
         TODO: parallelize for multiple voxels (i.e. in a layer of the tree)?
         """
@@ -268,6 +269,8 @@ class PolyhedronGraph(Graph):
                 voxel_id = voxel.key
                 # If voxel has no children and voxel tree depth is less than max depth, then subdivide the voxel further (generating new children)
                 if voxel.status != VoxelStatus.CLOSED and not self.voxel_tree.children(voxel_id) and self.voxel_tree.depth(voxel_id) < self.voxel_tree_max_depth-1:
+                    # # Close voxel if we generate children for it
+                    # voxel.status = VoxelStatus.CLOSED
                     # Genenerate voxel's 2^self.base_dim children
                     for direction in product([-1, 1], repeat=self.base_dim):
                         direction_array = np.array(direction, dtype=float)
@@ -820,7 +823,8 @@ class PolyhedronGraph(Graph):
         # Add voxel patches for all voxels in the voxel tree
         for voxel_node in self.voxel_tree.all_nodes_itr():
             voxel = voxel_node.data
-            if voxel.status == VoxelStatus.CLOSED:
+            # Only display voxel as CLOSED if it is a leaf node (since it's not informative to display upper nodes as CLOSED if they have children with mixed statuses)
+            if voxel.status == VoxelStatus.CLOSED and voxel_node.is_leaf():
                 fill = True
                 face_color = 'gray'
                 hatch = '/'
@@ -828,7 +832,7 @@ class PolyhedronGraph(Graph):
                 fill = True
                 face_color = 'magenta'
                 hatch = None
-            else:  # voxel.status == VoxelStatus.OPEN
+            else:
                 fill = False
                 face_color = None
                 hatch = None
