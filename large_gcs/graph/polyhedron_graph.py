@@ -6,6 +6,7 @@ from multiprocessing import Pool
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 import time
+import os
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import matplotlib.animation as animation
@@ -102,7 +103,7 @@ class PolyhedronGraph(Graph):
         self.clique_inflation_options.admissible_proportion_in_collision = 1e-2
         # self.clique_inflation_options.verbose = True
         
-        self.containment_tol = 1e-2  # This is actually very important; allowable tolerance to determine if a voxel is fully contained in a region
+        self.containment_tol = 5e-2  # This is actually very important; allowable tolerance to determine if a voxel is fully contained in a region
                                      # If too low, voxel may not be considered contained, thus resulting in an infinite loop of inflating this voxel, then regenerating the voxel...
         
         self.num_vertices = 0  # this var should only be modified by calls to get_new_vertex_name; it is only used for naming new reigons
@@ -393,6 +394,7 @@ class PolyhedronGraph(Graph):
             3. In gcs_star.py: Add a path (and solve its convex restriction) ending at each of those voxels to queue
             """
             polyhedron_boundary_voxels = self.find_polyhedron_boundary_voxels(self.vertices[vertex_name].convex_set, self.first_active_termination_condition)
+            # polyhedron_boundary_voxels = self.find_polyhedron_boundary_voxels(self.vertices[vertex_name].convex_set, self.max_depth_termination_condition)
             
             # Add voxel successors to neighbors
             for voxel in polyhedron_boundary_voxels:
@@ -847,9 +849,11 @@ class PolyhedronGraph(Graph):
                 # self.patches.append(text)
             
             elif self.base_dim == 3:
-                cube = self.plot_voxel(voxel, fill=fill, facecolor=face_color, hatch=hatch)
-                ax.add_collection3d(cube)
-                self.patches.append(cube)
+                # Only plot active voxels for visibility
+                if voxel.status == VoxelStatus.ACTIVE:
+                    cube = self.plot_voxel(voxel, fill=fill, facecolor=face_color, hatch=hatch)
+                    ax.add_collection3d(cube)
+                    self.patches.append(cube)
                 
                 # # Add voxel name as text in the center of the voxel
                 # if vertex_name not in ["source", "target"]:
@@ -866,7 +870,7 @@ class PolyhedronGraph(Graph):
         for vertex_name, vertex in self.vertices.items():
             if self.base_dim == 2:
                 if isinstance(vertex.convex_set, Polyhedron):
-                    polygon_patch = self.plot_polyhedron(vertex.convex_set, facecolor='red', alpha=0.2)
+                    polygon_patch = self.plot_polyhedron(vertex.convex_set, facecolor='red', alpha=0.1)
                     ax.add_patch(polygon_patch)
                     self.patches.append(polygon_patch)
                     
@@ -885,7 +889,7 @@ class PolyhedronGraph(Graph):
             
             elif self.base_dim == 3:
                 if isinstance(vertex.convex_set, Polyhedron):
-                    polygon_patch_3d = self.plot_polyhedron(vertex.convex_set, facecolor='red', alpha=0.2)
+                    polygon_patch_3d = self.plot_polyhedron(vertex.convex_set, facecolor='red', alpha=0.1)
                     ax.add_collection3d(polygon_patch_3d)
                     self.patches.append(polygon_patch_3d)
 
@@ -1004,10 +1008,16 @@ class PolyhedronGraph(Graph):
         # ax.legend()
         ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         
-        return fig, ax
+        return fig, ax    
     
-    def init_animation(self):
+    def init_animation(self, save_animation: bool = False, animation_output_path: str = None):
         """Initialize a persistent figure for animation."""
+        if not self.base_dim in [2, 3]:
+            logger.warning(
+                f"{self.__class__.__name__} Animation is not supported for base_dim {self.base_dim}."
+            )
+            return
+        
         self.animation_fig, self.animation_ax = self.plot()
 
         plt.ion()  # Turn on interactive mode
@@ -1027,11 +1037,24 @@ class PolyhedronGraph(Graph):
                 z_range = self.workspace[2][1] - self.workspace[2][0]
                 z_margin = 0.1 * z_range
                 self.animation_ax.set_zlim(self.workspace[2][0] - z_margin, self.workspace[2][1] + z_margin)
+                
+        # Setup directory to save animation frames to compile animation video
+        self.save_animation = save_animation
+        if self.save_animation:
+            # Create directory for frames if it doesn't exist
+            print(f"animation_output_path: {animation_output_path}")
+            self.frames_dir = os.path.join(os.path.dirname(animation_output_path), "animation_frames")
+            os.makedirs(self.frames_dir, exist_ok=True)
+            self.animation_output_path = animation_output_path
+            self.frame_count = 0  # Initialize frame counter
         
     def update_animation(self, sol: Optional[ShortestPathSolution] = None, block: bool = False):
         """Update the animation with new voxels and optionally a new solution."""
+        if not self.base_dim in [2, 3]:
+            return
+        
         if not hasattr(self, 'animation_fig'):
-            self.init_animation()
+            raise ValueError("Animation not initialized. Call init_animation() first.")
             
         self.plot(ax=self.animation_ax, sol=sol)
         
@@ -1039,8 +1062,66 @@ class PolyhedronGraph(Graph):
         self.animation_fig.canvas.draw()
         self.animation_fig.canvas.flush_events()
         
+        if self.save_animation and os.path.exists(self.frames_dir):  # frames_dir may have been deleted already if we're visualizing post-algorithm termination (so animation video has already been saved)           
+            # Save animation frame
+            if not hasattr(self, 'frames_dir'):
+                logger.warning("Animation recording not initialized. Call init_animation_recording first.")
+                return
+            
+            # Save the current figure as a frame
+            frame_path = os.path.join(self.frames_dir, f"frame_{self.frame_count:06d}.png")
+            self.animation_fig.savefig(frame_path, dpi=200)
+            
+            # Increment frame counter
+            self.frame_count += 1
+        
         if block:
             plt.show(block=True)
+            
+    def compile_animation(self, fps: int = 2):
+        """
+        Compile the captured frames into a video file.
+        Call this method after the algorithm has finished.
+        
+        Args:
+            fps: Frames per second for the video
+        """
+        if not hasattr(self, 'frames_dir') or not hasattr(self, 'animation_output_path'):
+            logger.warning("Animation recording not initialized. Call init_animation_recording first.")
+            return
+        
+        import subprocess
+        
+        # Check if we have any frames
+        if self.frame_count == 0:
+            logger.warning("No frames captured. Cannot compile animation.")
+            return
+        
+        # Use ffmpeg to compile frames into a video
+        try:
+            cmd = [
+                "ffmpeg", "-y",  # Overwrite output file if it exists
+                "-framerate", str(fps),
+                "-i", os.path.join(self.frames_dir, "frame_%06d.png"),
+                "-c:v", "libx264",
+                "-profile:v", "high",
+                "-crf", "20",  # Quality (lower is better)
+                "-pix_fmt", "yuv420p",  # Required for compatibility
+                self.animation_output_path
+            ]
+            
+            logger.info(f"Compiling animation with command: {' '.join(cmd)}")
+            subprocess.run(cmd, check=True)
+            logger.info(f"Animation saved to {self.animation_output_path}")
+            
+            # Optionally clean up frames
+            import shutil
+            shutil.rmtree(self.frames_dir)
+            
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to compile animation: {e}")
+            logger.info(f"Frames are saved in {self.frames_dir}")
+
         
     ### SERIALIZATION METHODS ###
 

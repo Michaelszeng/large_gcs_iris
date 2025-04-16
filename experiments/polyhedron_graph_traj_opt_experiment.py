@@ -48,11 +48,16 @@ TEST_SCENE = "3DOFFLIPPER"
 if TEST_SCENE == "2DOFFLIPPER":
     s = np.array([0, 0])
     t = np.array([-1, 1.7])
-    voxel_tree_max_depth = 4
+    voxel_tree_max_depth = 6
 elif TEST_SCENE == "3DOFFLIPPER":
     s = np.array([0.18, -0.1, -0.78])
     t = np.array([-1.7, 1.0, 1.5])
-    voxel_tree_max_depth = 4
+    voxel_tree_max_depth = 7
+elif TEST_SCENE == "5DOFUR3":
+    # Maneuvering in open space, away from shelf (should be pretty easy)
+    s = np.array([1.57, -1.42, -1.23, 2.72, 0])
+    t = np.array([-0.06, -0.86, -0.92, -2.14, 1.35])
+    voxel_tree_max_depth = 6
 else:
     raise ValueError(f"TEST_SCENE {TEST_SCENE} not supported yet.")
 rng = RandomGenerator(1234)
@@ -174,11 +179,9 @@ def main(cfg: OmegaConf) -> None:
         cost_estimator=cost_estimator,
         heuristic_inflation_factor=cfg.heuristic_inflation_factor,
         domination_checker=domination_checker,
-        vis_params=AlgVisParams(log_dir=full_log_dir),
+        vis_params=AlgVisParams(log_dir=full_log_dir, save_animation=cfg.save_visualization),
         terminate_early=cfg.terminate_early,
     )
-    
-    g.init_animation()
 
     sol: ShortestPathSolution = alg.run()
     assert sol is not None, "No solution found."

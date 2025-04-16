@@ -2,7 +2,7 @@ import logging
 import time
 from collections import deque
 from typing import Optional
-
+import os
 import numpy as np
 from tqdm import tqdm
 
@@ -124,6 +124,9 @@ class GcsStar(SearchAlgorithm):
         else:
             start_time = time.time()
         sol: Optional[ShortestPathSolution] = None
+        
+        self._graph.init_animation(self._vis_params.save_animation, os.path.join(self._vis_params.log_dir, self._vis_params.vid_output_path))
+        
         while sol == None and len(self._Q) > 0:
             sol = self._run_iteration()
             self._alg_metrics.time_wall_clock = time.time() - start_time
@@ -148,6 +151,9 @@ class GcsStar(SearchAlgorithm):
         )
         # Call post-solve again in case other solutions were found after this was first visited.
         self._graph._post_solve(sol)
+        
+        # Save animation video
+        self._graph.compile_animation()
         
         # Keep final solution plot open
         if self._vis_params.animate:

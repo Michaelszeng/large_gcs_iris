@@ -67,7 +67,7 @@ def main(cfg: OmegaConf) -> None:
         )
     else:
         # 3D Test
-        obstacles = [Polyhedron.from_vertices([[1,0,-1],[0,1,-1],[1,1,-1],[0,0,1],[1,0,1],[0,1,1]])]
+        obstacles = [Polyhedron.from_vertices([[1.1,0.1,-1.1],[0,1,-1.1],[1.1,1.1,-1.1],[0.1,0.1,1.1],[1.1,0.1,1.1],[0.1,1.1,1.1]])]
         # obstacles = [Polyhedron.from_vertices([[0.9,0.1,-1],[0.1,0.9,-1],[0.9,0.9,-1],[0.9,0.1,1],[0.1,0.9,1],[0.9,0.9,1]])]
         workspace = np.array([[-2.5, 2.5],    # workspace x-lim
                               [-2.5, 2.5],    # workspace y-lim
@@ -93,11 +93,9 @@ def main(cfg: OmegaConf) -> None:
         cost_estimator=cost_estimator,
         heuristic_inflation_factor=cfg.heuristic_inflation_factor,
         domination_checker=domination_checker,
-        vis_params=AlgVisParams(log_dir=full_log_dir),
+        vis_params=AlgVisParams(log_dir=full_log_dir, save_animation=cfg.save_visualization),
         terminate_early=cfg.terminate_early,
     )
-    
-    g.init_animation()
 
     sol: ShortestPathSolution = alg.run()
     assert sol is not None, "No solution found."

@@ -93,7 +93,7 @@ class VoxelCollisionCheckerConvexObstacles(VoxelCollisionChecker):
         
         self.rng = RandomGenerator(1234)
         
-    def check_voxel_collision_free(self, voxel: Voxel, use_intersection: bool = True, num_samples: int = 50) -> bool:
+    def check_voxel_collision_free(self, voxel: Voxel, use_intersection: bool = True, num_samples: int = 60, check_corners: bool = True) -> bool:
         """
         Check if a voxel is collision free.
         
@@ -106,10 +106,11 @@ class VoxelCollisionCheckerConvexObstacles(VoxelCollisionChecker):
                     return False
         else:
             # First, check corners of voxels
-            for corner in voxel.get_vertices().T:
-                for obstacle in self.obstacles:
-                    if obstacle.set.PointInSet(corner):
-                        return False  # Collision detected
+            if check_corners:
+                for corner in voxel.get_vertices().T:
+                    for obstacle in self.obstacles:
+                        if obstacle.set.PointInSet(corner):
+                            return False  # Collision detected
             # Then, check random samples within voxel
             for _ in range(num_samples):
                 sample = voxel.set_in_space.UniformSample(self.rng)
@@ -127,7 +128,7 @@ class VoxelSceneGraphCollisionChecker(VoxelCollisionChecker):
         self.collision_checker = SceneGraphCollisionChecker(**collision_checker_params)
         self.num_samples_per_voxel = num_samples_per_voxel
           
-    def check_voxel_collision_free(self, voxel: Voxel) -> bool:
+    def check_voxel_collision_free(self, voxel: Voxel, check_corners: bool = True) -> bool:
         """
         Check if a voxel is collision free. We consider a voxel collision-free
         if all samples are collision-free (i.e. no part of the voxel is in collision).
@@ -136,8 +137,12 @@ class VoxelSceneGraphCollisionChecker(VoxelCollisionChecker):
         of the voxel, but the number of corners scales exponentially with the dimension
         of the voxel. So this quickly becomes very slow.
         """
+        # Use random samples and voxel corners to check collision-free
+        corner_points = voxel.get_vertices().T  # Transpose to get points as rows
         samples = voxel.get_samples(self.num_samples_per_voxel)
-        if np.all(self.collision_checker.CheckConfigsCollisionFree(samples)):
+        all_samples = np.vstack([samples, corner_points])
+        
+        if np.all(self.collision_checker.CheckConfigsCollisionFree(all_samples)):
             return True
         else:
             return False
