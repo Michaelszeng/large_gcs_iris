@@ -25,7 +25,7 @@ class Voxel(ConvexSet):
     Voxel convex set defined by a center and a voxel size (side length).
     """
 
-    def __init__(self, center, voxel_size, num_knot_points, precision=6):
+    def __init__(self, center: np.ndarray, voxel_size: np.ndarray, num_knot_points: int, precision: int = 6):
         """
         The voxel will have dimension equal to the dimension of `center`.
         
@@ -52,7 +52,7 @@ class Voxel(ConvexSet):
         self.rng = RandomGenerator(1234)
         
         
-    def get_samples(self, sample_in_space=True, n_samples=100) -> np.ndarray:
+    def get_samples(self, sample_in_space: bool = True, n_samples: int = 100) -> np.ndarray:
         """
         This needs to be overridden in a voxel graph because the voxel's 
         _set representation has dimension `self.dim * self._num_knot_points`
@@ -76,7 +76,7 @@ class Voxel(ConvexSet):
         else:
             return super().get_samples(n_samples)
     
-    def get_vertices(self):
+    def get_vertices(self) -> np.ndarray:
         """
         Get the vertices of the voxel in space. Return then as a n x k array,
         where n is the dimension of space and k is the number of vertices.
@@ -86,7 +86,7 @@ class Voxel(ConvexSet):
         vertices = np.array(list(product(*[[lb[i], ub[i]] for i in range(self.dim)]))).T
         return vertices
         
-    def _plot(self, ax=None, **kwargs):
+    def _plot(self, ax: plt.Axes = None, **kwargs):
         if ax is None:
             ax = plt.gca()
 

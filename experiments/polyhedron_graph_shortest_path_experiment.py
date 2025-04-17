@@ -51,10 +51,11 @@ def main(cfg: OmegaConf) -> None:
     
     if d == 2:
         # 2D Test
-        obstacles = [Polyhedron.from_vertices([[1.9,0.1],[-0.3,2.1],[-0.3, 3.1],[1.9,3.1]]), Polyhedron.from_vertices([[-2.1,-0.3],[-0.3,-2.1],[-2.0,-2.1],[-2.1,-1.9]])]
+        # obstacles = [Polyhedron.from_vertices([[1.9,0.1],[-0.3,2.1],[-0.3, 3.1],[1.9,3.1]]), Polyhedron.from_vertices([[-2.1,-0.3],[-0.3,-2.1],[-2.0,-2.1],[-2.1,-1.9]])]
         # obstacles = [Polyhedron.from_vertices([[2.1,0.1],[0.1,2.1],[2.1,2.1]]), Polyhedron.from_vertices([[-2.1,-0.3],[-0.3,-2.1],[-2.1,-2.1]])]
         # obstacles = [Polyhedron.from_vertices([[0,0],[2,0],[0,2],[2,2]])]
-        # obstacles = [Polyhedron.from_vertices([[-0.1,-0.1],[3.1,-0.1],[-0.1,3.1],[3.1,3.1]])]  # NO SOLUTION
+        # obstacles = [Polyhedron.from_vertices([[-0.1,-0.1],[3.1,-0.1],[-0.1,3.1],[3.1,3.1]])]
+        obstacles = [Polyhedron.from_vertices([[3.1,-2.1],[3.1,2.1],[-1.1, 2.1]]), Polyhedron.from_vertices([[0.9,2.1],[1.1,2.1],[1.1, 4],[0.9, 4]])]
         workspace = np.array([[-4, 4],    # workspace x-lim
                               [-4, 4]])   # workspace y-lim
         g = PolyhedronGraph(

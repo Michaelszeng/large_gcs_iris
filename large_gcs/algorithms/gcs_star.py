@@ -127,7 +127,7 @@ class GcsStar(SearchAlgorithm):
         
         self._graph.init_animation(self._vis_params.save_animation, os.path.join(self._vis_params.log_dir, self._vis_params.vid_output_path))
         
-        while sol == None and len(self._Q) > 0:
+        while sol == None and (len(self._Q) > 0):
             sol = self._run_iteration()
             self._alg_metrics.time_wall_clock = time.time() - start_time
             # self._graph.plt.pause(10)
@@ -135,13 +135,12 @@ class GcsStar(SearchAlgorithm):
             logger.error(
                 f"{self.__class__.__name__} failed to find a path to the target."
             )
-            
-            # Save animation video
-            self._graph.compile_animation()
         
-            # Keep final solution plot open
             if self._vis_params.animate:
-                self._graph.update_animation(block=True)
+                self._graph.update_animation()
+                self._graph.compile_animation()  # Save animation video
+                self._graph.update_animation(block=True)  # Keep final solution plot open
+            
             return None
         
         # Find best solution
@@ -156,12 +155,10 @@ class GcsStar(SearchAlgorithm):
         # Call post-solve again in case other solutions were found after this was first visited.
         self._graph._post_solve(sol)
         
-        # Save animation video
-        self._graph.compile_animation()
-        
-        # Keep final solution plot open
         if self._vis_params.animate:
-            self._graph.update_animation(block=True)
+            self._graph.update_animation()
+            self._graph.compile_animation()  # Save animation video
+            self._graph.update_animation(block=True)  # Keep final solution plot open
             
         return sol
 
@@ -169,6 +166,9 @@ class GcsStar(SearchAlgorithm):
     def _run_iteration(self) -> Optional[ShortestPathSolution]:
         """Runs one iteration of the search algorithm."""
         n: SearchNode = self.pop_node_from_Q()
+        
+        # In case there are no nodes left on the Q, generate successors from the voxel tree
+        self._generate_successors_from_voxel_tree()
         
         # Skip polyhedrons and CLOSED voxels in the PolyhedronGraph "Best Voxel Inflation" algorithm
         if isinstance(self._graph, PolyhedronGraph):
@@ -186,7 +186,8 @@ class GcsStar(SearchAlgorithm):
             else vtx
             for vtx in n.vertex_path
         ]}""")
-            
+        
+        # Only visualize path after popping off of Q
         if self._vis_params.animate:
             self._graph.update_animation(n.sol)
         
@@ -225,6 +226,29 @@ class GcsStar(SearchAlgorithm):
         Wrapped to allow for profiling.
         """
         self._graph.generate_successors(vertex_name)
+        
+    @profile_method
+    def _generate_successors_from_voxel_tree(self) -> None:
+        """Searches voxel tree for first layer with open, partially-contained, 
+        non-collision voxels and generates paths ending at those voxels.
+
+        Wrapped to allow for profiling.
+        """
+        # If there are no nodes left on the Q, search the voxel tree for the first layer that does have open, partially-contained, non-collision voxels
+        # Generate paths ending at those voxels (i.e. generate successors and a search node for each) to be expanded
+        if len(self._Q) == 0:
+            # Mapping region names to lists of vertex names for voxels on the boundary of the region
+            all_nodes_successors = self._graph.generate_successors_from_voxel_tree()  # Dict[str, List[str]]
+            print(f"all_nodes_successors: {all_nodes_successors}")
+            for region_name, successors in all_nodes_successors.items():
+                # Find a path from s to region_name
+                n = self._S[region_name][0]  # Hoping this is the cheapest path ending at region_name, though it's not guaranteed to be
+                
+                # Iterate over successors, add their search nodes to Q (if not dominated)
+                for v in successors:
+                    if not self._allow_cycles and v in n.vertex_path:
+                        continue
+                    self._explore_successor(n, v)
 
     @profile_method
     def _explore_successor(

@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 import matplotlib.animation as animation
 from scipy.spatial import ConvexHull
-from typing import Set, Callable
+from typing import Set, Callable, Iterable
 import numpy as np
 from collections import deque
 from itertools import product
@@ -132,6 +132,59 @@ class PolyhedronGraph(Graph):
         n = self.num_vertices
         self.num_vertices += 1
         return str(n)
+    
+    def generate_successors_from_voxel_tree(self) -> Dict[str, List[str]]:
+        """
+        Searches voxel tree for first layer with open, partially-contained, 
+        non-collision voxels. This function is called by gcs_star.py in Phase 2
+        of the algorithm; each voxel will be appended to a path ending at its 
+        corresponding region to create a new path that will be added to the queue.
+               
+        Returns a dictionary mapping region names to lists of vertex names of
+        partially-contained, non-collision voxels. 
+        """
+        boundary_voxels = {}  # map region name to list of vertex names of the voxels on that region's boundary
+        seen_voxels = {}  # map voxel key to [vertex name, voxel, list of region_names] tuples
+
+        for region_name, region in self.vertices.items():
+            if isinstance(region.convex_set, Polyhedron):
+                # Find partially-contained, non-collision voxels on region's boundary at the highest depth of the voxel tree possible
+                boundary_voxels_for_region = self.find_polyhedron_boundary_voxels(
+                    region.convex_set,
+                    self.first_active_termination_condition
+                )
+                if boundary_voxels_for_region:
+                    boundary_voxels[region_name] = []
+                    # Add the voxel to the graph and append it to the list of voxels for this region
+                    for voxel in boundary_voxels_for_region:
+                        if not voxel.key in seen_voxels:
+                            seen_voxels[voxel.key] = (self.get_new_vertex_name(), voxel, [region_name])
+                        else:
+                            seen_voxels[voxel.key][2].append(region_name)  # Just append region name to list of region names for this voxel
+                        boundary_voxels[region_name].append(seen_voxels[voxel.key][0])
+        
+        # Must add vertices and edges to graph in a separate loop so we do not modify self.vertices dict while iterating over it
+        for voxel_key, voxel_info in seen_voxels.items():
+            vertex_name, voxel, region_names = voxel_info
+            # Add vertex to graph for this voxel
+            vertex = Vertex(
+                voxel,
+                costs=self._create_single_vertex_costs(voxel),
+                constraints=self._create_single_vertex_constraints(voxel),
+            )
+            self.add_vertex(vertex, vertex_name)
+            
+            # Add edge between region and voxel
+            for region_name in region_names:
+                self.add_undirected_edge(
+                    Edge(
+                        u=region_name,
+                        v=vertex_name,
+                        costs=self._create_single_edge_costs(region_name, vertex_name),
+                        constraints=self._create_single_edge_constraints(region_name, vertex_name),
+                    )
+                )
+        return boundary_voxels
     
     def successors(self, vertex_name: str) -> List[str]:
         """Override the default implementation of successors to return only
