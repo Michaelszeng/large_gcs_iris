@@ -444,8 +444,8 @@ class PolyhedronGraph(Graph):
         Generates a neighbor of u (called v) and adds it to the graph.
         
         If v is a voxel, add edge between v and its parent region.
-        If v is a polyhedron, add edge between v and all vertices in `v_neighbors` (which
-        should contain the names of intersecting regions).
+        If v is a polyhedron, add edge between v and all vertices in `v_neighbors` 
+        (which should contain the names of intersecting regions).
         """
         vertex = Vertex(
             v_set,
