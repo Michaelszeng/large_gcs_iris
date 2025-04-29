@@ -47,7 +47,6 @@ class GcsStar(SearchAlgorithm):
         override_wall_clock_time: Optional[float] = None,
         save_expansion_order: bool = False,
         allow_cycles: bool = True,
-        animate: bool = True,
     ):
         super().__init__(
             graph=graph,
@@ -146,14 +145,47 @@ class GcsStar(SearchAlgorithm):
         # Find best solution
         sol = min(self.solutions, key=lambda x: x.cost)
         
+        # Call post-solve again in case other solutions were found after this was first visited.
+        self._graph._post_solve(sol)
+        
+        # Count number of regions and edges in the graph
+        region_ct = 0
+        voxels = []
+        # Count number of regions in the graph
+        for v in self._graph.vertices:
+            if isinstance(self._graph.vertices[v].convex_set, Polyhedron):
+                region_ct += 1
+            elif isinstance(self._graph.vertices[v].convex_set, Voxel):
+                voxels.append(v)
+        for v in voxels:
+            # remove voxels from graph so we can count edges just in the cover
+            self._graph.remove_vertex(v)
+        # Count number of edges in the remaining graph
+        edge_ct = 0
+        for v in self._graph.vertices:
+            edge_ct += len(self._graph.outgoing_edges(v))
+            
+        edge_ct = 0
+        edges = set()
+        for e in self._graph.edges:
+            e = self._graph.edges[e]
+            if ((isinstance(self._graph.vertices[e.u].convex_set, Polyhedron) or e.u == "source") and 
+                (isinstance(self._graph.vertices[e.v].convex_set, Polyhedron) or e.v == "target") and
+                (e.u != e.v) and 
+                (f"(\"{e.u}\", \"{e.v}\")" not in edges) and (f"(\"{e.v}\", \"{e.u}\")" not in edges)):
+                edge_ct += 1
+                edges.add(e.key)
+                print(f"e: {e}")
+            
+            
         logger.info(
             f"\n===============================================================\n"
             f"{self.__class__.__name__} complete! \ncost: {sol.cost}, time: {sol.time}"
             f"\nvertex path: {np.array(sol.vertex_path)}"
+            f"\nnumber of regions in the graph: {region_ct}"
+            f"\nnumber of edges in the graph: {edge_ct}"
             f"\n==============================================================="
         )
-        # Call post-solve again in case other solutions were found after this was first visited.
-        self._graph._post_solve(sol)
         
         if self._vis_params.animate:
             self._graph.update_animation()

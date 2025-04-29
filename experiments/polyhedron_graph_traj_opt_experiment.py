@@ -58,6 +58,13 @@ elif TEST_SCENE == "5DOFUR3":
     s = np.array([1.57, -1.42, -1.23, 2.72, 0])
     t = np.array([-0.06, -0.86, -0.92, -2.14, 1.35])
     voxel_tree_max_depth = 6
+    
+    # # From out of shelf to in shelf
+    # s = np.array([-0.55, -1.22, -1.53, 2.33, -0.37])
+    # t = np.array([-1.57, -1.42, -1.23, 2.72, 0])  # Default position
+    # voxel_tree_max_depth = 9
+    
+    
 else:
     raise ValueError(f"TEST_SCENE {TEST_SCENE} not supported yet.")
 rng = RandomGenerator(1234)
@@ -98,6 +105,7 @@ collision_checker_params["edge_step_size"] = 0.125
 
 def animate_sol_meshcat(sol):
     """ Constant-speed stepthrough animation of the solution trajectory."""
+    print(f"Animating solution trajectory in Meshcat...")
     # Get last knot point from each trajectory point
     last_knot_points = []
     for traj_point in sol.trajectory:
@@ -187,6 +195,8 @@ def main(cfg: OmegaConf) -> None:
     assert sol is not None, "No solution found."
     logger.info(f"Solution Trajectory: {sol.trajectory}")
     
+    animate_sol_meshcat(sol)
+    
     if cfg.save_metrics:
         output_base = (
             f"{alg.__class__.__name__}_"
@@ -194,8 +204,6 @@ def main(cfg: OmegaConf) -> None:
         )
         metrics_path = Path(full_log_dir) / f"{output_base}_metrics.json"
         alg.save_alg_metrics_to_file(metrics_path)
-        
-    animate_sol_meshcat(sol)
     
     return
 

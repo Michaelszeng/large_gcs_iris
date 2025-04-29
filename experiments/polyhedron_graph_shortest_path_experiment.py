@@ -51,11 +51,13 @@ def main(cfg: OmegaConf) -> None:
     
     if d == 2:
         # 2D Test
-        # obstacles = [Polyhedron.from_vertices([[1.9,0.1],[-0.3,2.1],[-0.3, 3.1],[1.9,3.1]]), Polyhedron.from_vertices([[-2.1,-0.3],[-0.3,-2.1],[-2.0,-2.1],[-2.1,-1.9]])]
+        obstacles = [Polyhedron.from_vertices([[1.9,0.1],[-0.3,2.1],[-0.3, 3.1],[1.9,3.1]]), Polyhedron.from_vertices([[-2.1,-0.3],[-0.3,-2.1],[-1.9,-2.1],[-2.1,-1.9]])]  # Engineered Suboptimality Example
         # obstacles = [Polyhedron.from_vertices([[2.1,0.1],[0.1,2.1],[2.1,2.1]]), Polyhedron.from_vertices([[-2.1,-0.3],[-0.3,-2.1],[-2.1,-2.1]])]
         # obstacles = [Polyhedron.from_vertices([[0,0],[2,0],[0,2],[2,2]])]
         # obstacles = [Polyhedron.from_vertices([[-0.1,-0.1],[3.1,-0.1],[-0.1,3.1],[3.1,3.1]])]
-        obstacles = [Polyhedron.from_vertices([[3.1,-2.1],[3.1,2.1],[-1.1, 2.1]]), Polyhedron.from_vertices([[0.9,2.1],[1.1,2.1],[1.1, 4],[0.9, 4]])]
+        # obstacles = [Polyhedron.from_vertices([[3.1,-2.1],[3.1,2.1],[-1.1, 2.1]]), Polyhedron.from_vertices([[0.9,2.1],[1.1,2.1],[1.1, 4],[0.9, 4]])]  # Completeness test
+        # obstacles = [Polyhedron.from_vertices([[0.05,0.35],[2.05,2.35],[-1.95, 2.35]]), Polyhedron.from_vertices([[0.35,0.05],[2.35,2.05],[2.35, -1.95]])]  # Optimality Counterexample
+        # obstacles = [Polyhedron.from_vertices([[2.1,-1.9],[-1.9,2.1],[2.1,2.1]])]  # Simple graphic for short talk
         workspace = np.array([[-4, 4],    # workspace x-lim
                               [-4, 4]])   # workspace y-lim
         g = PolyhedronGraph(

@@ -350,7 +350,7 @@ class PolyhedronGraph(Graph):
 
         return boundary_voxels
 
-    def draw_edges_to_new_region(self, vertex_name: str, region: Polyhedron) -> None:
+    def add_edges_to_new_region(self, vertex_name: str, region: Polyhedron) -> None:
         """
         Detect intersections between newly generated region and any other regions
         and add respective edges to graph.
@@ -392,6 +392,10 @@ class PolyhedronGraph(Graph):
             polyhedron = Polyhedron.from_drake_hpoly(region, should_compute_vertices=True if self.base_dim in [2, 3] else False, num_knot_points=self.num_knot_points)  # Compute vertices for 2D/3D visualization
             neighbors.append((self.source_name, self.first_region_name, polyhedron, [self.source_name]))
             
+            # To update animation with newly inflated region
+            self._generate_neighbor(*neighbors[0])
+            self.update_animation()
+            
         elif vertex_name == self.target_name:
             # Should not generate neighbors for target vertex
             return
@@ -415,7 +419,11 @@ class PolyhedronGraph(Graph):
                     # Errors may occur if collision sampling does not detect a collision
                     print(f"Inflating region around voxel {vertex_name} with center {voxel.center}.")
                     # NOTE: FastCliqueInflation guarantees resulting region contains the clique (unless the clique's convex hull contains a collision)
-                    region = FastCliqueInflation(self.voxel_collision_checker.checker, voxel.get_vertices(), self.domain, self.clique_inflation_options)
+                    # region = FastCliqueInflation(self.voxel_collision_checker.checker, voxel.get_vertices(), self.domain, self.clique_inflation_options)
+                    
+                    self.iris_options.containment_points = voxel.get_vertices()  # Force region to contain the voxel
+                    starting_ellipse = Hyperellipsoid.MakeHypersphere(self.kEpsilonEllipsoid, voxel.center)
+                    region = IrisZo(self.voxel_collision_checker.checker, starting_ellipse, self.domain, self.iris_options)
                 except Exception as e:
                     logger.error(f"{self.__class__.__name__} Failed to inflate region around voxel {vertex_name} with center {voxel.center}.")
                     print(f"Error: {e}")
@@ -429,7 +437,7 @@ class PolyhedronGraph(Graph):
                 voxel.status = VoxelStatus.CLOSED
                 
                 # Draw edges to newly generated region
-                self.draw_edges_to_new_region(vertex_name, polyhedron)
+                self.add_edges_to_new_region(vertex_name, polyhedron)
                 
                 # Check if any non-CLOSED voxels were covered by the new region (if so, update their status to CLOSED)
                 for voxel_node in self.voxel_tree.leaves():
@@ -449,6 +457,9 @@ class PolyhedronGraph(Graph):
             2. Add each voxel to the graph
             3. In gcs_star.py: Add a path (and solve its convex restriction) ending at each of those voxels to queue
             """
+            # # To update animation with newly inflated region
+            # self.update_animation()
+            
             polyhedron_boundary_voxels = self.find_polyhedron_boundary_voxels(self.vertices[vertex_name].convex_set, self.first_active_termination_condition)
             # polyhedron_boundary_voxels = self.find_polyhedron_boundary_voxels(self.vertices[vertex_name].convex_set, self.max_depth_termination_condition)
             
@@ -1062,7 +1073,6 @@ class PolyhedronGraph(Graph):
             ax.set_box_aspect([1, 1, 1])
             
         ax.grid(False)
-        # ax.legend()
         ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         
         return fig, ax    
@@ -1173,7 +1183,7 @@ class PolyhedronGraph(Graph):
             
             # Optionally clean up frames
             import shutil
-            shutil.rmtree(self.frames_dir)
+            # shutil.rmtree(self.frames_dir)
             
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to compile animation: {e}")
