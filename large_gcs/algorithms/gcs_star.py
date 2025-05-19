@@ -1,7 +1,7 @@
 import logging
 import time
 from collections import deque
-from typing import Optional
+from typing import Tuple, List, Optional
 import os
 import numpy as np
 from tqdm import tqdm
@@ -41,7 +41,6 @@ class GcsStar(SearchAlgorithm):
         vis_params: Optional[AlgVisParams] = None,
         heuristic_inflation_factor: float = 1,
         terminate_early: bool = False,
-        invert_S: bool = False,
         max_len_S_per_vertex: int = 0,  # 0 means no limit
         load_checkpoint_log_dir: Optional[str] = None,
         override_wall_clock_time: Optional[float] = None,
@@ -57,14 +56,9 @@ class GcsStar(SearchAlgorithm):
         self._cost_estimator = cost_estimator
         self._domination_checker = domination_checker
         self._terminate_early = terminate_early
-        self._invert_S = invert_S
         self._max_len_S_per_vertex = max_len_S_per_vertex
         self._cost_estimator.set_alg_metrics(self._alg_metrics)
         self._domination_checker.set_alg_metrics(self._alg_metrics)
-
-        if invert_S:
-            self.add_node_to_S = self.add_node_to_S_left
-            self.remove_node_from_S = self.remove_node_from_S_left
 
         self._load_checkpoint_log_dir = load_checkpoint_log_dir
         self._save_expansion_order = save_expansion_order
@@ -274,7 +268,7 @@ class GcsStar(SearchAlgorithm):
             print(f"all_nodes_successors: {all_nodes_successors}")
             for region_name, successors in all_nodes_successors.items():
                 # Find a path from s to region_name
-                n = self._S[region_name][0]  # Hoping this is the cheapest path ending at region_name, though it's not guaranteed to be
+                n = list(self._S[region_name])[0]  # Hoping this is the cheapest path ending at region_name, though it's not guaranteed to be
                 
                 # Iterate over successors, add their search nodes to Q (if not dominated)
                 for v in successors:
@@ -324,16 +318,20 @@ class GcsStar(SearchAlgorithm):
         )
 
         # Check domination condition
+        is_dominated, alt_n_to_prune_from_S = self._is_dominated(n_next)
         if (
             successor != self._target_name  # If going to target, do not need to check domination condition
-            and self._is_dominated(n_next)
+            and is_dominated
         ):
             # Path does not reach new areas, do not add to Q or S
             logger.debug(f"Not added to Q: Path to {successor} is dominated")
             self.update_pruned(n_next)
             return
         logger.debug(f"Added to Q: Path to {successor} not dominated")
-        if (
+        # Prune nodes from S if necessary
+        for alt_n in alt_n_to_prune_from_S:
+            self.remove_node_from_S(alt_n.vertex_name)
+        if (  # Pruning based on max length of S
             self._max_len_S_per_vertex != 0
             and len(self._S[n_next.vertex_name]) >= self._max_len_S_per_vertex
         ):
@@ -343,12 +341,17 @@ class GcsStar(SearchAlgorithm):
         self.update_visited(n_next)  # Purely for logging
 
     @profile_method
-    def _is_dominated(self, n: SearchNode) -> bool:
+    def _is_dominated(self, n: SearchNode) -> Tuple[bool, List[SearchNode]]:
         """Checks if the given node is dominated by any other node in the
-        visited set."""
+        visited set.
+        
+        Returns:
+         - is_dominated: bool
+         - alt_n_to_prune_from_S: List[SearchNode] (SearchNodes to prune from S that got dominated by n)
+        """
         # Check for trivial domination case
         if n.vertex_name not in self._S:
-            return False
+            return False, []
 
         return self._domination_checker.is_dominated(n, self._S[n.vertex_name])
 

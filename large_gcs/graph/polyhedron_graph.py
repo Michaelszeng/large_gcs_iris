@@ -383,7 +383,7 @@ class PolyhedronGraph(Graph):
     def generate_successors(self, vertex_name: str) -> None:
         """Generates neighbors and adds them to the graph, also adds edges from
         vertex to neighbors."""
-        neighbors = []  # List of (u_name, v_name, is_v_in_vertices, ConvexSet, v_neighbors) tuples
+        neighbors = []  # List of (u_name, v_name, ConvexSet, v_neighbors) tuples
         
         if vertex_name == self.source_name:
             # Grow a region around the source

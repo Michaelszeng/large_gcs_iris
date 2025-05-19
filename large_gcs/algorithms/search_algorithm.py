@@ -11,7 +11,7 @@ from enum import Enum
 from functools import wraps
 from math import inf
 from pathlib import Path
-from typing import DefaultDict, Dict, List, Optional
+from typing import DefaultDict, Dict, List, Set, Optional
 
 import numpy as np
 import plotly.graph_objects as go
@@ -306,8 +306,23 @@ class SearchNode:
     vertex_path: List[str]
     parent: Optional["SearchNode"] = None
     sol: Optional[ShortestPathSolution] = None
+    sample_sols: Optional[Dict[bytes, ShortestPathSolution]] = field(default_factory=dict)  # Maps samples to the convex restriction solution to that sample
     ah_polyhedron_ns: Optional["AH_polytope"] = None  # type: ignore
     ah_polyhedron_fs: Optional["AH_polytope"] = None  # type: ignore
+    
+    def __post_init__(self):
+        """Compute and store the hash value once after initialization."""
+        self._hash = hash((tuple(self.vertex_path), tuple(self.edge_path)))
+
+    def __hash__(self):
+        """Return the pre-computed hash value."""
+        return self._hash
+
+    def __eq__(self, other):
+        """Define equality based on hash and path comparison."""
+        if not isinstance(other, SearchNode):
+            return False
+        return self._hash == other._hash
 
     def __lt__(self, other: "SearchNode"):
         return self.priority < other.priority
@@ -367,7 +382,7 @@ class SearchAlgorithm(ABC):
         self._heuristic_inflation_factor = heuristic_inflation_factor
 
         # Visited dictionary
-        self._S: DefaultDict[str, deque[SearchNode]] = defaultdict(deque)
+        self._S: DefaultDict[str, Set[SearchNode]] = defaultdict(set)
         # Priority queue
         self._Q = []
 
@@ -397,20 +412,11 @@ class SearchAlgorithm(ABC):
         # Abstraction for the priority queue pop operation that handles tiebreaks
         return heap.heappop(self._Q)[0]
 
-    def set_node_in_S(self, n: SearchNode):
-        self._S[n.vertex_name] = deque([n])
-
-    def add_node_to_S_left(self, n: SearchNode):
-        self._S[n.vertex_name].appendleft(n)
-
     def add_node_to_S(self, n: SearchNode):
-        self._S[n.vertex_name].append(n)
-
-    def remove_node_from_S_left(self, vertex_name: str):
-        self._S[vertex_name].pop()
+        self._S[n.vertex_name].add(n)
 
     def remove_node_from_S(self, vertex_name: str):
-        self._S[vertex_name].popleft()
+        self._S[vertex_name].pop()
 
     def update_expanded(self, n: SearchNode):
         """Keep track of expanded vertices to prevent re-expansion."""
