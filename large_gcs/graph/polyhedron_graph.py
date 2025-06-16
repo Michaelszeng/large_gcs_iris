@@ -143,7 +143,7 @@ class PolyhedronGraph(Graph):
         Returns a dictionary mapping region names to lists of vertex names of
         partially-contained, non-collision voxels. 
         """
-        boundary_voxels = {}  # map region name to list of vertex names of the voxels on that region's boundary
+        boundary_voxels = {}  # map region name to set of vertex names of the voxels on that region's boundary
         seen_voxels = {}  # map voxel key to [vertex name, voxel, list of region_names] tuples
 
         for region_name, region in self.vertices.items():
@@ -154,14 +154,14 @@ class PolyhedronGraph(Graph):
                     self.first_active_termination_condition
                 )
                 if boundary_voxels_for_region:
-                    boundary_voxels[region_name] = []
+                    boundary_voxels[region_name] = set()
                     # Add the voxel to the graph and append it to the list of voxels for this region
                     for voxel in boundary_voxels_for_region:
                         if not voxel.key in seen_voxels:
                             seen_voxels[voxel.key] = (self.get_new_vertex_name(), voxel, [region_name])
                         else:
                             seen_voxels[voxel.key][2].append(region_name)  # Just append region name to list of region names for this voxel
-                        boundary_voxels[region_name].append(seen_voxels[voxel.key][0])
+                        boundary_voxels[region_name].add(seen_voxels[voxel.key][0])
         
         # Must add vertices and edges to graph in a separate loop so we do not modify self.vertices dict while iterating over it
         for voxel_key, voxel_info in seen_voxels.items():

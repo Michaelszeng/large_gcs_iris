@@ -191,10 +191,12 @@ class GcsStar(SearchAlgorithm):
     @profile_method
     def _run_iteration(self) -> Optional[ShortestPathSolution]:
         """Runs one iteration of the search algorithm."""
-        n: SearchNode = self.pop_node_from_Q()
+        if len(self._Q) == 0:
+            # In case there are no nodes left on the Q, generate successors from the voxel tree
+            self._generate_successors_from_voxel_tree()
+            return
         
-        # In case there are no nodes left on the Q, generate successors from the voxel tree
-        self._generate_successors_from_voxel_tree()
+        n: SearchNode = self.pop_node_from_Q()
         
         # Skip polyhedrons and CLOSED voxels in the PolyhedronGraph "Best Voxel Inflation" algorithm
         if isinstance(self._graph, PolyhedronGraph):

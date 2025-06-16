@@ -1,6 +1,7 @@
 import logging
 from dataclasses import dataclass
 from typing import Set, Tuple, List, Optional
+from itertools import chain
 
 import numpy as np
 from pydrake.all import MathematicalProgram, Solve, SolverOptions
@@ -132,90 +133,113 @@ class SamplingDominationChecker(DominationChecker):
         (i.e. there exists a sample where the candidate is cheaper).
         
         Else, return True.
-        """     
-        is_dominated = True
+        """
+        last_vertex_name = candidate_node.vertex_name
         
-        # Generate samples if samples don't already exist (and cache them in self._set_samples)
-        self._maybe_add_set_samples(candidate_node.vertex_name)
-
+        # Generate samples if samples don't already exist for the last vertex in the path 
+        # (and cache them in self._set_samples)
+        self._maybe_add_set_samples(last_vertex_name)
         samples = []
         if self._should_use_candidate_sol_as_sample_as_sample:
             # The last vertex in the trajectory will be the target,
             # The second last would be the candidate vertex
             samples.append(candidate_node.sol.trajectory[-2])
+        samples += list(self._set_samples[last_vertex_name].samples)
         
-        # Compile cached samples
-        samples += list(self._set_samples[candidate_node.vertex_name].samples)
-
-        # Project samples into the feasible subspace of the path
-        for idx, sample in enumerate(samples):
-            if self._should_use_candidate_sol_as_sample_as_sample and idx == 0:
-                logger.debug(f"Using candidate sol as sample")
+        # Cache for path costs
+        node_sols: dict[SearchNode, ShortestPathSolution] = {}
+        
+        # Return values
+        candidate_is_dominated = False
+        alt_n_to_prune_from_S = []  # List of nodes to prune from S
+        
+        # For each node, check if it's non-dominated by any other node
+        for node in chain([candidate_node], alternate_nodes):  # use itertools.chain to avoid copying the list
+            node_is_dominated = True
+            # Compare node to other nodes on each sample
+            for idx, sample in enumerate(samples):
+                # Project samples into the feasible subspace of the path
                 # Candidate sol does not need to be projected
-                proj_sample = sample
-            else:
-                proj_sample = self._set_samples[
-                    candidate_node.vertex_name
-                ].project_single(self._graph, candidate_node, sample)
+                if self._should_use_candidate_sol_as_sample_as_sample and idx == 0:
+                    logger.debug(f"Using candidate sol as sample")
+                    proj_sample = sample
+                else:
+                    proj_sample = self._set_samples[node.vertex_name].project_single(self._graph, node, sample)
 
-            if proj_sample is None:
-                # If the projection failed assume that the candidate is not feasible, and reject the path
-                return True
-            
-            # Add a new vertex to replace the last vertex of the path.
-            # This is necessary because costs and constraints are added by vertex name.
-            # We need to apply a unique constraint on last vertex to ensure
-            # equality of the last knot point with the sample. If the last 
-            # vertex is visited multiple times throughout the path, the constraint 
-            # will be applied multiple times and the solver will fail. Therefore, 
-            # we add a new vertex with a new name.
-            sample_vertex_name = f"{candidate_node.vertex_name}_sample"
-            self._graph.add_vertex(
-                vertex=Vertex(
-                    convex_set=self._graph.vertices[candidate_node.vertex_name].convex_set,
-                    costs=self._graph.vertices[candidate_node.vertex_name].costs,  # Copy cost from original vertex
-                    constraints=[vertex_constraint_last_pos_equality_cfree(self._graph.base_dim, self._graph.num_knot_points, sample_vertex_name, proj_sample)],
-                ),
-                name=sample_vertex_name,
-            )
-
-            # Solve the convex restriction for the candidate path to that sample.
-            # _compute_candidate_sol is just a wrapper around _solve_conv_res_to_sample
-            # except for REACHESNEW domination checks the candidate solution
-            # isn't needed, so this wrapper just does nothing. 
-            candidate_sol, suceeded = self._compute_candidate_sol(
-                candidate_node, sample_vertex_name, sample
-            )
-            
-            if not suceeded:
-                self._graph.remove_vertex(sample_vertex_name)
-                continue
-            
-            # Check if the candidate path is dominated by any alternates to the sample
-            any_single_domination = False
-            for alt_i, alt_n in enumerate(alternate_nodes):
-                alt_sol = self._solve_conv_res_to_sample(alt_n, sample_vertex_name, sample)
-                # print(f"alt_sol.cost: {alt_sol.cost}")
-                # print(f"candidate_sol.cost: {candidate_sol.cost}")
-                if self._is_single_dominated(candidate_sol, alt_sol):
+                if proj_sample is None:
+                    # If the projection failed assume that the candidate is not feasible, and reject the path
+                    return True
+                
+                # Add a new vertex to replace the last vertex of the path.
+                # This is necessary because costs and constraints are added by vertex name.
+                # We need to apply a unique constraint on last vertex to ensure
+                # equality of the last knot point with the sample. If the last 
+                # vertex is visited multiple times throughout the path, the constraint 
+                # will be applied multiple times and the solver will fail. Therefore, 
+                # we add a new vertex with a new name.
+                sample_vertex_name = f"{last_vertex_name}_sample"
+                self._graph.add_vertex(
+                    vertex=Vertex(
+                        convex_set=self._graph.vertices[last_vertex_name].convex_set,
+                        costs=self._graph.vertices[last_vertex_name].costs,  # Copy cost from original vertex
+                        constraints=[vertex_constraint_last_pos_equality_cfree(self._graph.base_dim, self._graph.num_knot_points, sample_vertex_name, proj_sample)],
+                    ),
+                    name=sample_vertex_name,
+                )
+                
+                if node not in node_sols:
+                    # Solve the convex restriction for this path to the current sample.
+                    # _compute_candidate_sol is just a wrapper around _solve_conv_res_to_sample
+                    # except for REACHESNEW domination checks the candidate solution
+                    # isn't needed, so this wrapper just returns (None, True). 
+                    node_sol, suceeded = self._compute_candidate_sol(
+                        node, sample_vertex_name, sample
+                    )
+                    node_sols[node] = node_sol
+                
+                if not suceeded:
                     self._graph.remove_vertex(sample_vertex_name)
-                    any_single_domination = True
-                    break
+                    continue
+                
+                # Check if the node is dominated by any other nodes on this sample
+                any_single_domination = False
+                for other_node in chain([candidate_node], alternate_nodes):
+                    # Don't compare node to itself
+                    # if other_node == node:
+                    #     continue
+                    
+                    if other_node not in node_sols:
+                        alt_sol, suceeded = self._compute_candidate_sol(
+                            other_node, sample_vertex_name, sample
+                        )
+                        node_sols[other_node] = alt_sol
+                    
+                    if self._is_single_dominated(node_sols[node], node_sols[other_node]):
+                        self._graph.remove_vertex(sample_vertex_name)
+                        any_single_domination = True
+                        break
+                    
+                # Must check all samples for this node before pruning
+                if any_single_domination:
+                    continue
             
-            # If candidate is not dominated for any sample, we can return non-dominated
-            if not any_single_domination:
-                if sample_vertex_name in self._graph.vertices:
-                    self._graph.remove_vertex(sample_vertex_name)
-                self._graph.set_target(self._target)
-                print(f"path {candidate_node.vertex_path} is_dominated: False")
-                return False, []
-        
-        # No early termination, so candidate was dominated for all samples
+                # node was not dominated by any other node on this sample
+                # no need to check other samples
+                node_is_dominated = False
+                break
+            
+            if node_is_dominated:
+                if node == candidate_node:
+                    candidate_is_dominated = True
+                else:
+                    alt_n_to_prune_from_S.append(node)
+            
         if sample_vertex_name in self._graph.vertices:
             self._graph.remove_vertex(sample_vertex_name)
         self._graph.set_target(self._target)
-        print(f"path {candidate_node.vertex_path} is_dominated: True")
-        return True, []
+        print(f"Path {candidate_node.vertex_path} is_dominated: {candidate_is_dominated}")
+        print(f"Pruning {len(alt_n_to_prune_from_S)} nodes from S.")
+        return candidate_is_dominated, alt_n_to_prune_from_S
 
     def _is_single_dominated(
         self, candidate_sol: ShortestPathSolution, alt_sol: ShortestPathSolution

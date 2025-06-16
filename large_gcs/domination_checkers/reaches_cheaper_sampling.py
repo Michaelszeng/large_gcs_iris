@@ -54,7 +54,7 @@ class ReachesCheaperSampling(SamplingDominationChecker):
                 print("alt_sol.is_success: ", alt_sol.is_success)
                 print("\n\n\n\n\n\n\n")
             
-        return alt_sol.is_success and alt_sol.cost <= candidate_sol.cost
+        return alt_sol.is_success and alt_sol.cost < candidate_sol.cost
 
     def _compute_candidate_sol(
         self, candidate_node: SearchNode, sample_name: str, sample: np.ndarray
